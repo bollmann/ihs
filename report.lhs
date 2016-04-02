@@ -13,33 +13,42 @@
 \begin{document}
 \maketitle
 
-\abstract{In this report, I explore compile-time meta programming in
-  Template Haskell (TH) for the Glasgow Haskell Compiler (GHC). I
+\abstract{In this report, I explore the Glasgow Haskell Compiler's
+  (GHC's) compile-time meta programming in Template Haskell (TH). I
   motivate use cases for meta programming, explain the Template
-  Haskell extension's features on simple toy programs, and give an
-  overview of the extension's overall functionality. Furthermore, I
-  review Template Haskell's overall implementation in GHC from a
-  high-level perspective. Lastly, I describe my experience of
-  extending GHC's implementation of Template Haskell to also support
-  the newly added Pattern Synonyms feature.}
+  Haskell features on simple toy programs, and give an overview of
+  TH's overall functionality. Furthermore, I review Template Haskell's
+  implementation in GHC from a high-level perspective. Lastly, I
+  describe my experience of extending the Template Haskell
+  implementation inside GHC to also support the newly added Pattern
+  Synonyms feature.}
 
 \section{Introduction}
+
+\todo{Write me!}
 
 - What is Template Haskell? How did it come about? (Template Haskell
 Paper1, Paper2), Adoption of TH in real libraries to solve real-world
 problems (Yesod!)?
 
+- Motivation for TH:
+* Automate writing syntactically different, yet somehow similar programs all at once.
+  (e.g. generic mapN, zipN, ... functions, ...) -> reduce having to
+  repeatedly write the same code.
+
+* Automate writing repetitive/boilerplate code (deriving instances).
+
+* Allow the embedding of domain specific languages.
+- type safe regular expressions. (?)
+- SubstLang
+- much more powerful: type-safe routes/etc. in Yesod.
+
 - Even though its called the ugly under the HS extensions, it is the
 necessary. A LOT (see reverse dependencies) of packages depend on it.
 
 - What are the main benefits of TH?
-
-- Motivations for TH: Embedded Domain Specific Languages (e.g. Yesod's
-shakespeare templates)
-
-\todo{Write me!}
-
-\section{Use Cases for Template Haskell}
+  1. Write many programs using just a single meta program.
+  2. EDSLs.
 
 The central power of Template Haskell lies in the construction of meta
 programs, that is, programs which construct other programs due to
@@ -60,23 +69,30 @@ algorithm to compute all the different object programs as its
 result. This proves useful for example to avoid writing the same
 repetitive, boilerplate code over and over again.
 
-As an introductory example, consider Haskell's @Prelude@ functions
-|curry :: ((a,b) -> c) -> a -> b -> c| and |uncurry :: (a -> b -> c)
--> (a,b) -> c|, which convert functions taking a pair to their curried
-equivalents and vice versa. Unfortunately, there are no @Prelude@
-functions that provide the same currying and uncurrying functionality
-for functions taking arbitrary \(n\)-tuples. Moreover, having to write
+\section{Learning Template Haskell by Examples}
+
+In this section, I will teach the basic concepts of Template Haskell
+to write meta programs. In the first set of examples I will show-case
+Template Haskell's potential as a code generator; in the second set of
+examples I'll highlight its facilities to create very concise, yet
+type-safe embedded domain specific languages (EDSLs).
+
+As an introductory example, consider Haskell's @Prelude@ function
+|curry :: ((a,b) -> c) -> a -> b -> c|, which converts a function
+taking a pair to its curried equivalent. Unfortunately, there are no
+@Prelude@ functions that provide the same currying functionality for
+functions taking arbitrary \(n\)-tuples. Moreover, having to write
 more than a few of these functions manually is, while trivial, a very
-repetitive and cumbersome task. Using GHC's Template Haskell language
-extension, however, we can automate this. In particular, we can write
-meta functions |curryN :: Int -> Q Exp| and |uncurry :: Int -> Q Exp|
-that \textit{construct the code} for currying and uncurrying any
-\(n\)-ary tuple functions on demand:
+repetitive and cumbersome task. Instead we wish to generate needed
+|curry4|, |curry9|, or |curry23| functions through a single meta
+program on demand. Template Haskell let's us do just this. The idea is
+to write a meta function |curryN :: Int -> Q Exp| which, given a
+number \(n \geq 1\), \textit{constructs the source code} for an
+\(n\)-ary |curry| function:
 
 > import Control.Monad
 > import Language.Haskell.TH
 >
-> -- curries a function f :: (t1, t2, ..., tn) -> t to f' :: t1 -> t2 -> ... -> tn -> t.
 > curryN :: Int -> Q Exp
 > curryN n = do
 >   f  <- newName "f"
@@ -84,8 +100,43 @@ that \textit{construct the code} for currying and uncurrying any
 >   let args = map VarP (f:xs)
 >       ntup = TupE (map VarE xs)
 >   return $ LamE args (AppE (VarE f) ntup)
->
-> -- Uncurries a function f' :: t1 -> t2 -> ... -> tn -> t. to f :: (t1, t2, ..., tn) -> t.
+
+Given the integer |n|, |curryN| builds the requested \(n\)-ary curry
+function in abstract syntax. It returns a lambda abstraction |LamE|
+that pattern matches against a function variable |f| and \(n\)
+argument variables |x1|, |x2|, ..., |xn| and then applies function |f|
+to an \(n\)-tuple expression |(x1, x2, .., xn)| derived from the
+pattern matched variables. The names used to represent the function
+variable |f| and the arguments |x1| through |xn| are hereby generated
+monadically by function |newName| to always generate fresh names that
+don't collide with other names. Hence, the value returned (e.g.,) by
+|(curryN 3)| is a monadic computation of type |Q Exp|. When executed,
+this monadic computation yields an expression |Exp| representing the
+object-level function |curry3| of type |(a, b, c) -> d) -> a -> b -> c
+-> d| in abstract syntax.
+
+To run the monadic computation returned by |(curryN 3)| and, moreover,
+to convert the built object program source code from its abstract
+syntax form into real Haskell code, we have to splice it back in. This
+is done by Template Haskell via a special \textit{splice} operator,
+denoted |$(..)|. Thus, writing |$(curryN 3)| first runs the @Q@
+computation and then splices the resulting object program representing
+the |curry3| function back in as real Haskell code.
+
+The implementation of |curryN| exhibits the two core mechanisms that
+Template Haskell is built on: algebraic data types and the quotation
+monad @Q@. Object programs created by Template Haskell are represented
+by normal data types in the form of abstract syntax trees. The
+Template Haskell library provides the algebraic data types |Exp|,
+|Pat|, |Dec|, and |Type| to represent Haskell's surface syntax of
+expressions, patterns, declarations, and its types,
+respectively. Virtually every concrete Haskell syntactic construct has
+a corresponding abstract syntax constructor in one of the four
+ADTs. Moreover, meta programs in Template Haskell are built inside the
+quotation monad |Q|. This monad's main purpose is to extend Haskell's
+lexical scoping to the level of object programs. 
+
+
 > uncurryN :: Int -> Q Exp
 > uncurryN n = do
 >   f  <- newName "f"
@@ -94,26 +145,6 @@ that \textit{construct the code} for currying and uncurrying any
 >       app  = foldl AppE (VarE f) (map VarE xs)
 >   return $ LamE [VarP f, ntup] app
 
-For any \(k \geq 1\) |(curryN k)| then constructs the code for a
-function |curryk :: ((t1,t2,..,tk) -> t) -> t1 -> t2 -> .. -> tk ->
-t|, while |(uncurryN k)| yields the code for a function |uncurryk ::
-(t1 -> t2 -> .. -> tk -> t) -> (t1, t2, .., tk) -> t|.
-
-As a further, slightly more involved, example let's consider for
-example the definition of the @Prelude@ function @map@:
-
-< map :: (a -> b) -> [a] -> [b]
-< map f []     = []
-< map f (x:xs) = f x : map f xs
-
-* Automate writing syntactically different, yet somehow similar programs all at once.
-- select the kth element of any n-tuple; write code that does this all at once!
-- write code that can generate any mapN function
-- Automate writing repetitive/boilerplate code (deriving instances).
-
-* Allow the embedding of domain specific languages.
-- type safe regular expressions.
-- much more powerful: type-safe routes/etc. in Yesod.
 
 \section{Overview of Template Haskell's offered Functionality}
 

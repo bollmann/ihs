@@ -1,6 +1,6 @@
-all: report.tex
+all: report.tex refs.bib
 	pdflatex -shell-escape $^
-	bibtex report.tex
+	bibtex report
 	pdflatex -shell-escape $^
 	pdflatex -shell-escape $^
 
@@ -8,4 +8,4 @@ report.tex: report.lhs
 	lhs2TeX $^ -o $@
 
 clean:
-	rm -rf report.tex report.pdf *.aux *~ *.log *.ptb
+	rm -rf report.tex report.pdf *.aux *~ *.log *.ptb *.blg *.bbl
