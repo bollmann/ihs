@@ -28,8 +28,8 @@
 \todo{Write me!}
 
 - What is Template Haskell? How did it come about? (Template Haskell
-Paper1, Paper2), Adoption of TH in real libraries to solve real-world
-problems (Yesod!)?
+Paper1, Paper2, Quasi-Quote paper), Adoption of TH in real libraries
+to solve real-world problems (Yesod's Shakespearean languages!)?
 
 - Motivation for TH:
 * Automate writing syntactically different, yet somehow similar programs all at once.
@@ -69,9 +69,9 @@ algorithm to compute all the different object programs as its
 result. This proves useful for example to avoid writing the same
 repetitive, boilerplate code over and over again.
 
-\section{Learning Template Haskell by Examples}
+\section{Reviewing Template Haskell by Examples}
 
-In this section, I will teach the basic concepts of Template Haskell
+In this section, I will review the basic concepts of Template Haskell
 to write meta programs. In the first set of examples I will show-case
 Template Haskell's potential as a code generator; in the second set of
 examples I'll highlight its facilities to create very concise, yet
@@ -84,7 +84,7 @@ taking a pair to its curried equivalent. Unfortunately, there are no
 functions taking arbitrary \(n\)-tuples. Moreover, having to write
 more than a few of these functions manually is, while trivial, a very
 repetitive and cumbersome task. Instead we wish to generate needed
-|curry4|, |curry9|, or |curry23| functions through a single meta
+|curry3|, |curry5|, or |curry8| functions through a single meta
 program on demand. Template Haskell let's us do just this. The idea is
 to write a meta function |curryN :: Int -> Q Exp| which, given a
 number \(n \geq 1\), \textit{constructs the source code} for an
@@ -101,41 +101,141 @@ number \(n \geq 1\), \textit{constructs the source code} for an
 >       ntup = TupE (map VarE xs)
 >   return $ LamE args (AppE (VarE f) ntup)
 
-Given the integer |n|, |curryN| builds the requested \(n\)-ary curry
-function in abstract syntax. It returns a lambda abstraction |LamE|
-that pattern matches against a function variable |f| and \(n\)
-argument variables |x1|, |x2|, ..., |xn| and then applies function |f|
-to an \(n\)-tuple expression |(x1, x2, .., xn)| derived from the
-pattern matched variables. The names used to represent the function
-variable |f| and the arguments |x1| through |xn| are hereby generated
-monadically by function |newName| to always generate fresh names that
-don't collide with other names. Hence, the value returned (e.g.,) by
-|(curryN 3)| is a monadic computation of type |Q Exp|. When executed,
-this monadic computation yields an expression |Exp| representing the
-object-level function |curry3| of type |(a, b, c) -> d) -> a -> b -> c
--> d| in abstract syntax.
+Given an integer \(n\), meta function |curryN| builds the object
+program for an \(n\)-ary curry function in abstract syntax. It returns
+a lambda abstraction |LamE| which pattern matches against a function
+variable |f| and \(n\) argument variables |x1|, |x2|, ..., |xn| and
+then applies function |f| to an \(n\)-tuple expression |(x1, x2, ..,
+xn)| derived from the pattern matched variables. The names used to
+refer to the variables |f| and |x1| through |xn| are hereby generated
+monadically by function |newName :: String -> Q Name| to always
+generate fresh names not used anywhere else. Hence, the value returned
+(e.g.,) by |(curryN 3)| is a monadic computation of type @Q Exp@. When
+executed, this monadic computation yields an expression @Exp@
+representing the object function |curry3| of type |((a, b, c) -> d) ->
+a -> b -> c -> d| in abstract syntax.
 
-To run the monadic computation returned by |(curryN 3)| and, moreover,
-to convert the built object program source code from its abstract
-syntax form into real Haskell code, we have to splice it back in. This
-is done by Template Haskell via a special \textit{splice} operator,
-denoted |$(..)|. Thus, writing |$(curryN 3)| first runs the @Q@
-computation and then splices the resulting object program representing
-the |curry3| function back in as real Haskell code.
+The generated object program's source code can be executed at
+compile-time by splicing it in. This is done by Template Haskell via a
+special \textit{splice} operator, denoted |$(..)|. Writing |$(curryN
+3)| runs the @Q@ computation and converts the resulting object program
+holding the |curry3| function to real Haskell code, which is then
+spliced in. Thus, at compile-time, |$(curryN 3)| evaluates to the
+Haskell expression |\f x1 x2 x3 -> f (x1, x2, x3)|, which precisely
+implements the |curry3| function.
 
-The implementation of |curryN| exhibits the two core mechanisms that
-Template Haskell is built on: algebraic data types and the quotation
-monad @Q@. Object programs created by Template Haskell are represented
-by normal data types in the form of abstract syntax trees. The
-Template Haskell library provides the algebraic data types |Exp|,
-|Pat|, |Dec|, and |Type| to represent Haskell's surface syntax of
-expressions, patterns, declarations, and its types,
-respectively. Virtually every concrete Haskell syntactic construct has
-a corresponding abstract syntax constructor in one of the four
-ADTs. Moreover, meta programs in Template Haskell are built inside the
-quotation monad |Q|. This monad's main purpose is to extend Haskell's
-lexical scoping to the level of object programs. 
+To generate function declarations for the first \(n\) curry functions,
+we can devise a further meta program on top of |curryN| as follows:
 
+> genCurries :: Int -> Q [Dec]
+> genCurries n = sequence [ mkCurry i | i <- [1..n] ]
+>   where mkCurry ith = do
+>           cury <- curryN ith
+>           let name = mkName $ "curry" ++ show ith
+>           return $ FunD name [Clause [] (NormalB cury) []]
+
+Running |$(genCurries 20)| will then generate the first 20 curry
+functions at compile-time, namely:
+
+< curry1  = \f x1 -> f (x1)
+< curry2  = \f x1 x2 -> f (x1, x2)
+< curry3  = \f x1 x2 x3 -> f (x1, x2, x3)
+< curry4  = \f x1 x2 x3 x4 -> f (x1, x2, x3, x4)
+< ...
+< curry20 = \f x1 x2 .. x20 -> f (x1, x2, .., x20)
+
+Note that in this case, |genCurries| returns a list of function
+declarations to bind the anonymous lambda abstractions. Furthermore,
+to name the function bindings, we use function |mkName :: String ->
+Name| instead of |newName|. The reason is that here we want to
+generate the capturable function names |curry1| to |curry20|.
+
+Splicing in generated object programs as regular Haskell code at
+compile-time using the splicing operator |$(..)| is the first central
+building block of Template Haskell. The two other core mechanisms are
+exhibited by the implementations of |curryN| and |genCurries|:
+algebraic data types and the quotation monad @Q@.
+
+Object programs created by Template Haskell are represented by normal
+data types in the form of abstract syntax trees. The Template Haskell
+library provides algebraic data types @Exp@, @Pat@, @Dec@, and @Type@
+to represent Haskell's surface syntax of expressions, patterns,
+declarations, and types, respectively. Virtually every concrete
+Haskell syntactic construct has a corresponding abstract syntax
+constructor in one of the four ADTs. Furthermore, all Haskell
+identifiers are represented by the abstract @Name@ data type in
+Template Haskell object programs. By representing object programs as
+regular algebraic data types (and thus as data), normal Haskell can be
+used as the meta programming language to build object programs.
+
+Second, TH object programs are built inside the quotation monad
+@Q@. Besides giving access to fresh names via function |newName ::
+String -> Q Name|, the monad's main purpose is to extend Haskell's
+static scoping discipline to the object programs constructed with
+Haskell \cite{th1}. The scoping principle is just as in normal
+Haskell: Identifiers inside an object program are bound to their
+lexically enclosing binders in scope, when the object program
+\textit{is defined}. Achieving static scoping is not straightforward
+due to the interplay of splices |$(..)| and a feature that hasn't been
+introduced yet: \textit{quotation brackets} |[|| .. ||]|.
+
+Quotation brackets are a shortcut for constructing object programs in
+Template Haskell. They allow to specify an object program using just
+regular Haskell syntax by enclosing it inside oxford brackets |[||
+  .. ||]|. That way, object programs can be specified much more
+succinctly. For example, writing a meta program for building an object
+program of the identity function is already quite verbose, if
+expressed just using ADTs:
+
+> genId :: Q Dec
+> genId = do
+>   x <- newName "x"
+>   return $ LamE [VarP x] (VarE x)
+
+Using quotation brackets, writing the same meta program can be
+abbreviated with:
+
+< genId :: Q Dec
+< genId = [| \x -> x |]
+
+That is, quotation brackets quote regular Haskell code as a
+corresponding Template Haskell object program inside the @Q@
+monad. There are four different kinds of quotation brackets: |[e||
+  .. ||]|, |[p|| .. ||]|, |[d|| .. ||]|, and |[t|| .. ||]| for quoting
+Haskell expressions, patterns, declarations, and types,
+respectively. The quotation bracket |[|| .. ||]| is hereby another way
+of writing |[e|| .. ||]|. Using the quotation brackets, all of
+Haskell's concrete programs can also be represented as object programs
+in Template Haskell.
+
+
+
+which allows splicing in object programs
+into real Haskell code at arbitrary locations. And at the splice
+point, the names used in the object program might clash with the names
+used in the surrounding Haskell program. \todo{should we add an
+  example here?} Therefore the @Q@ monad provides the function
+|newName :: String -> Q Name| that generates a fresh, non-capturable
+name every time it is invoked.
+
+For instance, if we didn't
+use a monadic computation
+
+also occur as binders in the surrounding
+program. Consider for example the following (illegal) snippet:
+
+< module A where
+<
+< foo = 42
+<
+< metaProg :: Q Exp
+< metaProg = return $ 
+<
+< 
+
+< module B where
+<
+< \f -> $(metaProg)
 
 > uncurryN :: Int -> Q Exp
 > uncurryN n = do
