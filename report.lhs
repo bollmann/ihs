@@ -74,8 +74,8 @@ repetitive, boilerplate code over and over again.
 In this section, I will review the basic concepts of Template Haskell
 to write meta programs. In the first set of examples I will show-case
 Template Haskell's potential as a code generator; in the second set of
-examples I'll highlight its facilities to create very concise, yet
-type-safe embedded domain specific languages (EDSLs).
+examples I'll highlight its facilities to create type-safe embedded
+domain specific languages (EDSLs).
 
 As an introductory example, consider Haskell's @Prelude@ function
 |curry :: ((a,b) -> c) -> a -> b -> c|, which converts a function
@@ -101,28 +101,30 @@ number \(n \geq 1\), \textit{constructs the source code} for an
 >       ntup = TupE (map VarE xs)
 >   return $ LamE args (AppE (VarE f) ntup)
 
-Given an integer \(n\), meta function |curryN| builds the object
-program for an \(n\)-ary curry function in abstract syntax. It returns
-a lambda abstraction |LamE| which pattern matches against a function
-variable |f| and \(n\) argument variables |x1|, |x2|, ..., |xn| and
-then applies function |f| to an \(n\)-tuple expression |(x1, x2, ..,
-xn)| derived from the pattern matched variables. The names used to
-refer to the variables |f| and |x1| through |xn| are hereby generated
-monadically by function |newName :: String -> Q Name| to always
-generate fresh names not used anywhere else. Hence, the value returned
-(e.g.,) by |(curryN 3)| is a monadic computation of type @Q Exp@. When
-executed, this monadic computation yields an expression @Exp@
-representing the object function |curry3| of type |((a, b, c) -> d) ->
-a -> b -> c -> d| in abstract syntax.
+|curryN| builds a lambda abstraction |LamE| that pattern matches
+against a function |f| and \(n\) argument variables |x1|, |x2|, ...,
+|xn|; in its body, it then applies function |f| to the \(n\)-tuple
+|(x1, x2, ..., xn)| derived from the pattern matched variables
+variables. The names used to refer to the variables |f| and |x1|
+through |xn| are hereby generated monadically by function |newName ::
+String -> Q Name| to always generate fresh names not used anywhere
+else. Hence, the value returned by |curryN| is a monadic computation
+of type @Q Exp@. When executed, this monadic computation yields an
+expression @Exp@ representing the object program of an \(n\)-ary curry
+function. For example, |(curryN 3)| yields a monadic computation,
+whose result expression holds an object program of the |curry3|
+function of type |((a, b, c) -> d) -> a -> b -> c -> d| in abstract
+syntax.
 
-The generated object program's source code can be executed at
-compile-time by splicing it in. This is done by Template Haskell via a
-special \textit{splice} operator, denoted |$(..)|. Writing |$(curryN
-3)| runs the @Q@ computation and converts the resulting object program
-holding the |curry3| function to real Haskell code, which is then
-spliced in. Thus, at compile-time, |$(curryN 3)| evaluates to the
-Haskell expression |\f x1 x2 x3 -> f (x1, x2, x3)|, which precisely
-implements the |curry3| function.
+To execute a generated object program at compile time, Template
+Haskell's \textit{splice} operator |$(..)| is used. When applied to a
+@Q Exp@ computation it performs this computation and converts the
+embedded object program to real Haskell code. That is, enclosing an
+object program with the |$(..)| operator means to evaluate it to its
+corresponding Haskell program at compile time. For example, writing
+|$(curryN 3)| evaluates the object program of the |curry3| function at
+compile time and puts the result |\f x1 x2 x3 -> f (x1, x2, x3)| in
+place of the splice.
 
 To generate function declarations for the first \(n\) curry functions,
 we can devise a further meta program on top of |curryN| as follows:
@@ -134,7 +136,7 @@ we can devise a further meta program on top of |curryN| as follows:
 >           let name = mkName $ "curry" ++ show ith
 >           return $ FunD name [Clause [] (NormalB cury) []]
 
-Running |$(genCurries 20)| will then generate the first 20 curry
+Running |$(genCurries 20)| will then splice in the first 20 curry
 functions at compile-time, namely:
 
 < curry1  = \f x1 -> f (x1)
@@ -142,34 +144,47 @@ functions at compile-time, namely:
 < curry3  = \f x1 x2 x3 -> f (x1, x2, x3)
 < curry4  = \f x1 x2 x3 x4 -> f (x1, x2, x3, x4)
 < ...
-< curry20 = \f x1 x2 .. x20 -> f (x1, x2, .., x20)
+< curry20 = \f x1 x2 ... x20 -> f (x1, x2, ..., x20)
 
 Note that in this case, |genCurries| returns a list of function
-declarations to bind the anonymous lambda abstractions. Furthermore,
-to name the function bindings, we use function |mkName :: String ->
-Name| instead of |newName|. The reason is that here we want to
-generate the capturable function names |curry1| to |curry20|.
+declarations that bind the anonymous lambda abstractions built by
+|curryN|. Furthermore, to name the function bindings, we use the
+function |mkName :: String -> Name| instead of |newName :: String -> Q
+Name|. The reason is that here we want to generate functions |curry1|
+to |curry20| with known names, so they can be captured and referred to
+from other parts of the program.
 
 Splicing in generated object programs as regular Haskell code at
-compile-time using the splicing operator |$(..)| is the first central
-building block of Template Haskell. The two other core mechanisms are
-exhibited by the implementations of |curryN| and |genCurries|:
-algebraic data types and the quotation monad @Q@.
+compile-time is the first central building block of Template
+Haskell. The two other core mechanisms are exhibited by the
+implementations of |curryN| and |genCurries|: algebraic data types and
+the quotation monad @Q@.
 
-Object programs created by Template Haskell are represented by normal
-data types in the form of abstract syntax trees. The Template Haskell
-library provides algebraic data types @Exp@, @Pat@, @Dec@, and @Type@
-to represent Haskell's surface syntax of expressions, patterns,
-declarations, and types, respectively. Virtually every concrete
-Haskell syntactic construct has a corresponding abstract syntax
-constructor in one of the four ADTs. Furthermore, all Haskell
-identifiers are represented by the abstract @Name@ data type in
-Template Haskell object programs. By representing object programs as
-regular algebraic data types (and thus as data), normal Haskell can be
-used as the meta programming language to build object programs.
+Object programs created by Template Haskell are represented by regular
+algebraic data types in the form of abstract syntax trees. The
+Template Haskell library provides algebraic data types @Exp@, @Pat@,
+@Dec@, and @Type@ to represent Haskell's surface syntax of
+expressions, patterns, declarations, and types,
+respectively. Virtually every concrete Haskell syntactic construct has
+a corresponding abstract syntax constructor in one of the four
+ADTs. Furthermore, all Haskell identifiers are represented by the
+abstract @Name@ data type in Template Haskell object programs. By
+representing object programs as regular algebraic data types (and thus
+as data), normal Haskell can be used as the meta programming language
+to build object programs.
 
 Second, TH object programs are built inside the quotation monad
-@Q@. Besides giving access to fresh names via function |newName ::
+@Q@. This monad is performed by the splice operator |$| at
+compile-time as part of evaluating an object program. In the examples
+so far, the @Q@ monad was only needed to provide fresh names with
+function |newName| during the construction of an object program. The
+other two main purposes for this monad are to provide program
+\textit{reification} and to extend Haskell's static scoping discipline
+to the object program level \cite{th1}.
+
+
+
+Besides giving access to fresh names via function |newName ::
 String -> Q Name|, the monad's main purpose is to extend Haskell's
 static scoping discipline to the object programs constructed with
 Haskell \cite{th1}. The scoping principle is just as in normal
