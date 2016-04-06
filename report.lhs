@@ -247,17 +247,19 @@ only difference lies in their types:
 \end{tabular}
 \end{center}
 
-That is, instead of taking raw object program expressions, the syntax
-construction functions take their monadic counterparts, which they
-first perform, before constructing the larger object program in @Q@.
+While the syntax constructors work with raw Haskell expressions, the
+syntax construction functions expect Haskell expressions wrapped
+inside monad @Q@. They construct an object program directly in @Q@,
+thus allowing the API consumer to not have to do all the monadic
+wrapping and unwrapping manually.
 
-On top of syntax construction functions, quotation brackets are a
+On top of the syntax construction functions, quotation brackets are a
 further shortcut for representing Haskell code. They allow to specify
 an object program using just regular Haskell syntax by enclosing it
 inside oxford brackets |[|| .. ||]|. That way, object programs can be
-specified yet much more succinctly. For example, writing a meta
-program for building an object program of the identity function is
-still quite verbose, if expressed using ADTs or even the syntax
+specified yet much more succinctly. For example, a meta program
+building a Haskell expression for the identity function is still quite
+verbose, if expressed as abstract syntax using either ADTs or syntax
 construction functions:
 
 > genId :: Q Exp
@@ -271,35 +273,44 @@ abbreviated much further as:
 > genId' :: Q Dec
 > genId' = [| \x -> x |]
 
-That is, quotation brackets quote regular Haskell code as the
-corresponding Template Haskell object program inside the @Q@
-monad. They represent the dual form of the already introduced splice
-operator ``|$|'': While operator ``|$|'' splices in a generated object
-program as real Haskell code, the quotation brackets |[|| .. ||]| turn
-real Haskell code into an object program. There are four different
-kinds of quotation brackets: |[e|| .. ||]|, |[p|| .. ||]|, |[d||
-  .. ||]|, and |[t|| .. ||]| for quoting Haskell expressions,
-patterns, declarations, and types, respectively. The quotation bracket
-|[|| .. ||]| is hereby just another way of writing |[e||
-  .. ||]|. Using the quotation brackets, all of Haskell's concrete
+Quotation brackets quote regular Haskell code as their corresponding
+object program fragments inside the @Q@ monad. By doing so, they
+represent the dual of the already introduced splice operator ``|$|'':
+Evaluating a meta program with ``|$|'' splices in the generated object
+program as real Haskell code; in contrast the quotation brackets |[||
+  .. ||]| turn real Haskell code into an object program. Consequently,
+quotation brackets and the splice operator cancel each other out. The
+equation |$([|| e ||]) = e| holds for all expressions \(e\) and
+similarly for patterns, declarations, and types \cite{th2}.
+
+There are four different kinds of quotation brackets: |[e|| .. ||]|,
+|[p|| .. ||]|, |[d|| .. ||]|, and |[t|| .. ||]| for quoting Haskell
+expressions, patterns, declarations, and types, respectively. The
+quotation bracket |[|| .. ||]| is hereby just another way of writing
+|[e|| .. ||]|. Furthermore, there is support for quoting Haskell
+identifiers as corresponding Template Haskell @Name@s. For example,
+writing |'genId| yields a TH @Name@ referring to the |genId|
+identifier. Similarly, |''Q| gives a @Name@ referring to the @Q@ type
+identifier. Using the quotation brackets, all of Haskell's concrete
 programs can also be represented as object programs in Template
 Haskell.
 
 As a further example that uses both syntax construction functions as
 well as quotation brackets, let's consider a meta program |mapN :: Int
--> Q Dec| to build generic |map| functions at compile-time. Invoking
-|$(mapN 2)| should generate the well known |map :: (a -> b) -> [a] ->
-[b]| function; evaluating |$(mapN 3)| should splice in a ternary map
-function of type |(a -> b -> c) -> [a] -> [b] -> [c]| and so
-on\footnote{Note that \(n\)-ary maps are better written using
-  Applicative Functors and @ZipList@s. For understanding Template
-  Haskell as a code generator this example is still useful though.}.
+-> Q Dec| to build ``generic'' |map| functions at
+compile-time. Invoking |$(mapN 1)| should generate the well-known |map
+:: (a -> b) -> [a] -> [b]| function; evaluating |$(mapN 2)| should
+splice in a binary map function of type |(a -> b -> c) -> [a] -> [b]
+-> [c]|, and so on\footnote{Note that \(n\)-ary maps are better
+  written using Applicative Functors and @ZipList@s. For understanding
+  Template Haskell as a code generator, this example is still useful
+  though.}.
 
 %format ` = "\; \lq"
 > mapN :: Int -> Q Dec
 > mapN n
->   | n >= 2    = funD name [cl1, cl2]
->   | otherwise = fail "mapN: argument n may not be <= 1."
+>   | n >= 1    = funD name [cl1, cl2]
+>   | otherwise = fail "mapN: argument n may not be <= 0."
 >   where
 >     name = mkName $ "map" ++ show n
 >     cl1  = do f  <- newName "f"
@@ -310,15 +321,32 @@ on\footnote{Note that \(n\)-ary maps are better written using
 >                   apply     = foldl (\g x -> [| $g $(varE x) |])
 >                   first = apply (varE f) xs
 >                   rest  = apply (varE name) (f:ys)
->               clause argPatts (normalB [| $ first : $ rest |]) []
+>               clause argPatts (normalB [| $first : $rest |]) []
 >     cl2  = clause (replicate (n+1) wildP) (normalB (conE `[])) []
 
 The implementation of |mapN| is very much in the spirit of function
-|curryN| explained before. For example, evaluating splice |$(mapN 3)|
-generates the following map function at compile time:
+|curryN| from the first example. For instance, evaluating splice
+|$(mapN 3)| splices in the following map function at compile time:
 
 > map3 f (x:xs) (y:ys) (z:zs) = f x y z : map3 f xs ys zs
 > map3 _ _      _      _      = []
+
+Nonetheless, meta function |mapN| exhibits a couple of new Template
+Haskell features: First, quotation brackets and splices are used in
+several places to abbreviate the object program construction by
+``lifting'' concrete Haskell syntax into the object program. Function
+|apply| (e.g.,) used to generate |map3|'s body |f x y z : map3 f xs ys
+zs| exemplifies quotation brackets; it also highlights how splicing
+(``|$|'') and quotes ( ``|[|| .. ||]|'') cancel each other
+out. Second, identifier quotes (namely, |'[]|) are used to create an
+object program name referring to the built-in empty list constructor
+|[]|.
+
+Moreover, the example shows how all three APIs (Haskell ADTs and the
+quotation monad, syntax construction functions, and quotation
+brackets) can be mixed in the construction of the object program.
+
+TODO: Explain extension of static scope to the object level here!
 
 %% Besides giving access to fresh names via function |newName ::
 %% String -> Q Name|, the monad's main purpose is to extend Haskell's
