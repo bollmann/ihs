@@ -69,13 +69,14 @@ algorithm to compute all the different object programs as its
 result. This proves useful for example to avoid writing the same
 repetitive, boilerplate code over and over again.
 
-\section{Reviewing Template Haskell by Examples}
+\section{Learning Template Haskell by Examples}
 
-In this section, I will review the basic concepts of Template Haskell
-to write meta programs. In the first set of examples I will show-case
-Template Haskell's potential as a code generator; in the second set of
-examples I'll highlight its facilities to create type-safe embedded
-domain specific languages (EDSLs).
+In this section, I will review the Template Haskell functionality as
+introduced in \cite{th1, th2, qq} to write meta programs. In the
+first set of examples I will show-case Template Haskell's potential as
+a code generator; in the second set of examples I'll highlight its
+facilities to create type-safe embedded domain specific languages
+(EDSLs).
 
 As an introductory example, consider Haskell's @Prelude@ function
 |curry :: ((a,b) -> c) -> a -> b -> c|, which converts a function
@@ -104,34 +105,35 @@ number \(n \geq 1\), \textit{constructs the source code} for an
 |curryN| builds a lambda abstraction |LamE| that pattern matches
 against a function |f| and \(n\) argument variables |x1|, |x2|, ...,
 |xn|; in its body, it then applies function |f| to the \(n\)-tuple
-|(x1, x2, ..., xn)| derived from the pattern matched variables
-variables. The names used to refer to the variables |f| and |x1|
-through |xn| are hereby generated monadically by function |newName ::
-String -> Q Name| to always generate fresh names not used anywhere
-else. Hence, the value returned by |curryN| is a monadic computation
-of type @Q Exp@. When executed, this monadic computation yields an
-expression @Exp@ representing the object program of an \(n\)-ary curry
+|(x1, x2, ..., xn)| derived from the pattern matched variables. The
+names used to refer to the variables |f| and |x1| through |xn| are
+hereby generated monadically by function |newName :: String -> Q Name|
+to always generate fresh names not used anywhere else. Hence, the
+value returned by |curryN| is a monadic computation of type @Q
+Exp@. When executed, this monadic computation yields an expression
+@Exp@ representing the object program of an \(n\)-ary curry
 function. For example, |(curryN 3)| yields a monadic computation,
 whose result expression holds an object program of the |curry3|
 function of type |((a, b, c) -> d) -> a -> b -> c -> d| in abstract
 syntax.
 
-To execute a generated object program at compile time, Template
-Haskell's \textit{splice} operator |$(..)| is used. When applied to a
+To run a meta program like |curryN| at compile time, Template
+Haskell's \textit{splice} operator ``|$|'' is used. When applied to a
 @Q Exp@ computation it performs this computation and converts the
-embedded object program to real Haskell code. That is, enclosing an
-object program with the |$(..)| operator means to evaluate it to its
-corresponding Haskell program at compile time. For example, writing
-|$(curryN 3)| evaluates the object program of the |curry3| function at
-compile time and puts the result |\f x1 x2 x3 -> f (x1, x2, x3)| in
-place of the splice.
+resulting object program to real Haskell code. That is, enclosing a
+Haskell meta program with the ``|$|'' operator means to evaluate it
+and to splice in the generated Haskell program as the result. To
+ensure type safety, the meta program is typechecked before being run
+at compile time. For example, writing |$(curryN 3)| evaluates the meta
+program of the |curry3| function at compile time and puts the result
+|\f x1 x2 x3 -> f (x1, x2, x3)| in place of the splice.
 
 To generate function declarations for the first \(n\) curry functions,
 we can devise a further meta program on top of |curryN| as follows:
 
 > genCurries :: Int -> Q [Dec]
-> genCurries n = sequence [ mkCurry i | i <- [1..n] ]
->   where mkCurry ith = do
+> genCurries n = sequence [ mkCurryDec i | i <- [1..n] ]
+>   where mkCurryDec ith = do
 >           cury <- curryN ith
 >           let name = mkName $ "curry" ++ show ith
 >           return $ FunD name [Clause [] (NormalB cury) []]
@@ -154,76 +156,179 @@ Name|. The reason is that here we want to generate functions |curry1|
 to |curry20| with known names, so they can be captured and referred to
 from other parts of the program.
 
-Splicing in generated object programs as regular Haskell code at
-compile-time is the first central building block of Template
-Haskell. The two other core mechanisms are exhibited by the
-implementations of |curryN| and |genCurries|: algebraic data types and
-the quotation monad @Q@.
+Evaluating Haskell code at compile time and splicing in the generated
+object programs as regular Haskell code is the first central building
+block of Template Haskell. Two further core mechanisms are shown in
+the implementations of |curryN| and |genCurries|: algebraic data types
+and the quotation monad @Q@.
 
 Object programs created by Template Haskell are represented by regular
-algebraic data types in the form of abstract syntax trees. The
-Template Haskell library provides algebraic data types @Exp@, @Pat@,
-@Dec@, and @Type@ to represent Haskell's surface syntax of
-expressions, patterns, declarations, and types,
-respectively. Virtually every concrete Haskell syntactic construct has
-a corresponding abstract syntax constructor in one of the four
-ADTs. Furthermore, all Haskell identifiers are represented by the
-abstract @Name@ data type in Template Haskell object programs. By
+algebraic data types in the form of abstract syntax trees. In the
+|curryN| example, we represented the generated lambda abstraction as a
+Haskell expression with constructors @VarE@, @LamE@, @AppE@, @TupE@,
+etc. \todo{should we remove this example?} This Haskell expression
+furthermore consisted of pattern expressions for the matched
+variables, so we also used @Pat@'s @VarP@ constructor. Similarly, in
+the |genCurries| example we represented the generated function
+declaration using the @Dec@ data type and used constructors @FunD@,
+@Clause@, and @NormalB@ to represent it. In general, the Template
+Haskell library provides algebraic data types @Exp@, @Pat@, @Dec@, and
+@Type@ to represent Haskell's surface syntax of expressions, patterns,
+declarations, and types, respectively. Virtually every concrete
+Haskell syntactic construct has a corresponding abstract syntax
+constructor in one of the four ADTs. Furthermore, all Haskell
+identifiers are represented by the abstract @Name@ data type. By
 representing object programs as regular algebraic data types (and thus
 as data), normal Haskell can be used as the meta programming language
 to build object programs.
 
 Second, TH object programs are built inside the quotation monad
-@Q@. This monad is performed by the splice operator |$| at
-compile-time as part of evaluating an object program. In the examples
-so far, the @Q@ monad was only needed to provide fresh names with
-function |newName| during the construction of an object program. The
-other two main purposes for this monad are to provide program
-\textit{reification} and to extend Haskell's static scoping discipline
-to the object program level \cite{th1}.
+@Q@. This monad is performed by the splice operator ``|$|'' at
+compile-time as part of evaluating the meta program. In the examples
+so far, the @Q@ monad was only needed to provide fresh identifiers
+with function |newName :: String -> Q Name| for the generated Haskell
+expressions. The other features that require a monadic construction of
+object programs are \textit{program reification} and extending
+Haskell's static scoping to the object program level. We will explain
+both of these features later.
 
+%% Briefly, program reification allows a meta program to query compile
+%% time information about other program parts while constructing an
+%% object program. For instance, a meta program asked to automatically
+%% derive a typeclass instance based on the definition of a data type
+%% needs to know about the data type's value constructors and
+%% fields. Precisely this information can be obtained using reification.
 
+Splicing in object programs with ``|$|'' and building them from
+algebraic data types inside the quotation monad @Q@ (almost)
+constitutes the functionality of Template Haskell. However,
+constructing object programs in terms of their abstract syntax trees
+is quite verbose and leads to clumsy meta programs. Therefore the
+Template Haskell API also provides two further interfaces to build
+object programs more conveniently: \textit{syntax construction
+  functions} and \textit{quotation brackets}.
 
-Besides giving access to fresh names via function |newName ::
-String -> Q Name|, the monad's main purpose is to extend Haskell's
-static scoping discipline to the object programs constructed with
-Haskell \cite{th1}. The scoping principle is just as in normal
-Haskell: Identifiers inside an object program are bound to their
-lexically enclosing binders in scope, when the object program
-\textit{is defined}. Achieving static scoping is not straightforward
-due to the interplay of splices |$(..)| and a feature that hasn't been
-introduced yet: \textit{quotation brackets} |[|| .. ||]|.
+Syntax construction functions directly relate to the syntax
+constructors from the algebraic data types @Exp@, @Pat@, @Dec@, and
+@Type@ for representing Haskell code. However, they hide the monadic
+nature of building object programs. For example, recall our definition
+of the |genCurries| meta function from above:
 
-Quotation brackets are a shortcut for constructing object programs in
-Template Haskell. They allow to specify an object program using just
-regular Haskell syntax by enclosing it inside oxford brackets |[||
-  .. ||]|. That way, object programs can be specified much more
-succinctly. For example, writing a meta program for building an object
-program of the identity function is already quite verbose, if
-expressed just using ADTs:
+< genCurries :: Int -> Q [Dec]
+< genCurries n = sequence [ mkCurryDec i | i <- [1..n] ]
+<   where mkCurryDec ith = do
+<           cury <- curryN ith
+<           let name = mkName $ "curry" ++ show ith
+<           return $ FunD name [Clause [] (NormalB cury) []]
 
-> genId :: Q Dec
+To use the object program generated by the sub call to |curryN| in the
+larger context of the returned function declaration, we have to first
+perform |curryN| and bind its result to |cury|. The reason is that we
+have to account for |curryN|'s generation of fresh names before we can
+continue. Using syntax construction functions, however, frees us from
+explicitly performing monadic program parts when constructing a larger
+program. This allows us to write |genCurries| a little more
+succinctly:
+
+> genCurries' :: Int -> Q [Dec]
+> genCurries' n = sequence [ mkCurryDec i | i <- [1..n] ]
+>   where mkCurryDec ith = funD name [clause [] (normalB (curryN ith)) []]
+>           where name = mkName $ "curry" ++ show ith
+
+The new @funD@, @clause@, and @normalB@ functions directly correspond
+to the formerly used @FunD@, @Clause@, and @NormalB@ constructors. The
+only difference lies in their types:
+
+\begin{center}
+\begin{tabular}{l||l}
+|FunD    :: Name -> [Clause] -> Dec| & |funD    :: Name -> [Q Clause] -> Q Dec| \\
+|Clause  :: [Pat] -> Body -> Clause| & |clause  :: [Q Pat] -> Q Body -> Q Clause| \\
+|NormalB :: Exp -> Body| & |normalB :: Q Exp -> Q Body|
+\end{tabular}
+\end{center}
+
+That is, instead of taking raw object program expressions, the syntax
+construction functions take their monadic counterparts, which they
+first perform, before constructing the larger object program in @Q@.
+
+On top of syntax construction functions, quotation brackets are a
+further shortcut for representing Haskell code. They allow to specify
+an object program using just regular Haskell syntax by enclosing it
+inside oxford brackets |[|| .. ||]|. That way, object programs can be
+specified yet much more succinctly. For example, writing a meta
+program for building an object program of the identity function is
+still quite verbose, if expressed using ADTs or even the syntax
+construction functions:
+
+> genId :: Q Exp
 > genId = do
 >   x <- newName "x"
->   return $ LamE [VarP x] (VarE x)
+>   lamE [varP x] (varE x)
 
 Using quotation brackets, writing the same meta program can be
-abbreviated with:
+abbreviated much further as:
 
-< genId :: Q Dec
-< genId = [| \x -> x |]
+> genId' :: Q Dec
+> genId' = [| \x -> x |]
 
-That is, quotation brackets quote regular Haskell code as a
+That is, quotation brackets quote regular Haskell code as the
 corresponding Template Haskell object program inside the @Q@
-monad. There are four different kinds of quotation brackets: |[e||
-  .. ||]|, |[p|| .. ||]|, |[d|| .. ||]|, and |[t|| .. ||]| for quoting
-Haskell expressions, patterns, declarations, and types,
-respectively. The quotation bracket |[|| .. ||]| is hereby another way
-of writing |[e|| .. ||]|. Using the quotation brackets, all of
-Haskell's concrete programs can also be represented as object programs
-in Template Haskell.
+monad. They represent the dual form of the already introduced splice
+operator ``|$|'': While operator ``|$|'' splices in a generated object
+program as real Haskell code, the quotation brackets |[|| .. ||]| turn
+real Haskell code into an object program. There are four different
+kinds of quotation brackets: |[e|| .. ||]|, |[p|| .. ||]|, |[d||
+  .. ||]|, and |[t|| .. ||]| for quoting Haskell expressions,
+patterns, declarations, and types, respectively. The quotation bracket
+|[|| .. ||]| is hereby just another way of writing |[e||
+  .. ||]|. Using the quotation brackets, all of Haskell's concrete
+programs can also be represented as object programs in Template
+Haskell.
 
+As a further example that uses both syntax construction functions as
+well as quotation brackets, let's consider a meta program |mapN :: Int
+-> Q Dec| to build generic |map| functions at compile-time. Invoking
+|$(mapN 2)| should generate the well known |map :: (a -> b) -> [a] ->
+[b]| function; evaluating |$(mapN 3)| should splice in a ternary map
+function of type |(a -> b -> c) -> [a] -> [b] -> [c]| and so
+on\footnote{Note that \(n\)-ary maps are better written using
+  Applicative Functors and @ZipList@s. For understanding Template
+  Haskell as a code generator this example is still useful though.}.
 
+%format ` = "\; \lq"
+> mapN :: Int -> Q Dec
+> mapN n
+>   | n >= 2    = funD name [cl1, cl2]
+>   | otherwise = fail "mapN: argument n may not be <= 1."
+>   where
+>     name = mkName $ "map" ++ show n
+>     cl1  = do f  <- newName "f"
+>               xs <- replicateM n (newName "x")
+>               ys <- replicateM n (newName "ys")
+>               let argPatts  = varP f : consPatts
+>                   consPatts = [ [p| $(varP x) : $(varP ys) |] | (x,ys) <- xs `zip` ys ]
+>                   apply     = foldl (\g x -> [| $g $(varE x) |])
+>                   first = apply (varE f) xs
+>                   rest  = apply (varE name) (f:ys)
+>               clause argPatts (normalB [| $ first : $ rest |]) []
+>     cl2  = clause (replicate (n+1) wildP) (normalB (conE `[])) []
+
+The implementation of |mapN| is very much in the spirit of function
+|curryN| explained before. For example, evaluating splice |$(mapN 3)|
+generates the following map function at compile time:
+
+> map3 f (x:xs) (y:ys) (z:zs) = f x y z : map3 f xs ys zs
+> map3 _ _      _      _      = []
+
+%% Besides giving access to fresh names via function |newName ::
+%% String -> Q Name|, the monad's main purpose is to extend Haskell's
+%% static scoping discipline to the object programs constructed with
+%% Haskell \cite{th1}. The scoping principle is just as in normal
+%% Haskell: Identifiers inside an object program are bound to their
+%% lexically enclosing binders in scope, when the object program
+%% \textit{is defined}. Achieving static scoping is not straightforward
+%% due to the interplay of splices |$(..)| and a feature that hasn't been
+%% introduced yet: \textit{quotation brackets} |[|| .. ||]|.
 
 which allows splicing in object programs
 into real Haskell code at arbitrary locations. And at the splice
@@ -244,9 +349,8 @@ program. Consider for example the following (illegal) snippet:
 < foo = 42
 <
 < metaProg :: Q Exp
-< metaProg = return $ 
+< metaProg = return x
 <
-< 
 
 < module B where
 <
@@ -281,7 +385,7 @@ operators to construct metaprograms more efficiently.
 
 \section{Sources}
 
-%\bibliographstyle{alpha}
+\bibliographystyle{alpha}
 \bibliography{refs}
 
 \end{document}
