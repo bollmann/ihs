@@ -1,9 +1,13 @@
 \documentclass{article}
 %include polycode.fmt
 %options -fglasgow-exts
+%format `  = "\,\textquotesingle"
+
 \usepackage{todonotes}
 \usepackage[top=2cm,left=4cm,right=4cm,bottom=2cm]{geometry}
+\usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
+\usepackage{textcomp}
 
 \title{Exploring and Extending Template Haskell \\ An Experience Report}
 
@@ -187,17 +191,10 @@ Second, TH object programs are built inside the quotation monad
 compile-time as part of evaluating the meta program. In the examples
 so far, the @Q@ monad was only needed to provide fresh identifiers
 with function |newName :: String -> Q Name| for the generated Haskell
-expressions. The other features that require a monadic construction of
-object programs are \textit{program reification} and extending
-Haskell's static scoping to the object program level. We will explain
-both of these features later.
-
-%% Briefly, program reification allows a meta program to query compile
-%% time information about other program parts while constructing an
-%% object program. For instance, a meta program asked to automatically
-%% derive a typeclass instance based on the definition of a data type
-%% needs to know about the data type's value constructors and
-%% fields. Precisely this information can be obtained using reification.
+expressions. The other main feature that requires a monadic
+construction of object programs is \textit{program reification}, which
+allows to query compile-time information during the object program's
+construction. We will explain this feature in detail later.
 
 Splicing in object programs with ``|$|'' and building them from
 algebraic data types inside the quotation monad @Q@ (almost)
@@ -251,7 +248,11 @@ While the syntax constructors work with raw Haskell expressions, the
 syntax construction functions expect Haskell expressions wrapped
 inside monad @Q@. They construct an object program directly in @Q@,
 thus allowing the API consumer to not have to do all the monadic
-wrapping and unwrapping manually.
+wrapping and unwrapping manually. For every syntax constructor, there
+is a corresponding monadic syntax construction function provided. This
+gives the programmer the choice to either explicitly construct object
+programs inside the @Q@ monad or to do the monadic construction
+implicitly with syntax construction functions.
 
 On top of the syntax construction functions, quotation brackets are a
 further shortcut for representing Haskell code. They allow to specify
@@ -273,29 +274,30 @@ abbreviated much further as:
 > genId' :: Q Dec
 > genId' = [| \x -> x |]
 
-Quotation brackets quote regular Haskell code as their corresponding
-object program fragments inside the @Q@ monad. By doing so, they
-represent the dual of the already introduced splice operator ``|$|'':
-Evaluating a meta program with ``|$|'' splices in the generated object
-program as real Haskell code; in contrast the quotation brackets |[||
-  .. ||]| turn real Haskell code into an object program. Consequently,
-quotation brackets and the splice operator cancel each other out. The
-equation |$([|| e ||]) = e| holds for all expressions \(e\) and
-similarly for patterns, declarations, and types \cite{th2}.
+Quotation brackets quote regular Haskell code as the corresponding
+object program fragments inside the @Q@ monad. There are quotation
+brackets for quoting Haskell expressions (|[e|| .. ||]|), patterns
+(|[p|| .. ||]|), declarations (|[d|| .. ||]|), and types (|[t||
+  .. ||]|). Writing |[|| .. ||]| is hereby just another way of saying
+|[e|| .. ||]|. Using quotation brackets in a sense ``lifts'' Haskell's
+concrete syntax into corresponding object program expressions in the
+@Q@ monad. By doing so, quotation brackets represent the dual of the
+already introduced splice operator ``|$|'': Evaluating a meta program
+with ``|$|'' splices in the generated object program as real Haskell
+code; in contrast the quotation brackets |[|| .. ||]| turn real
+Haskell code into an object program. Consequently, quotation brackets
+and the splice operator cancel each other out. The equation |$([|| e
+  ||]) = e| holds for all expressions \(e\) and similar equations hold
+for patterns, declarations, and types \cite{th2}.
 
-There are four different kinds of quotation brackets: |[e|| .. ||]|,
-|[p|| .. ||]|, |[d|| .. ||]|, and |[t|| .. ||]| for quoting Haskell
-expressions, patterns, declarations, and types, respectively. The
-quotation bracket |[|| .. ||]| is hereby just another way of writing
-|[e|| .. ||]|. Furthermore, there is support for quoting Haskell
-identifiers as corresponding Template Haskell @Name@s. For example,
-writing |'genId| yields a TH @Name@ referring to the |genId|
-identifier. Similarly, |''Q| gives a @Name@ referring to the @Q@ type
-identifier. Using the quotation brackets, all of Haskell's concrete
-programs can also be represented as object programs in Template
-Haskell.
+In addition, there is support for quoting Haskell (value and type)
+identifiers as corresponding Template Haskell @Name@s. This allows to
+refer to regular Haskell identifiers from within Template Haskell
+object programs. For example, writing |`genId| yields a TH @Name@
+referring to the |genId| identifier. Similarly, |``Q| gives a @Name@
+referring to the @Q@ type identifier.
 
-As a further example that uses both syntax construction functions as
+As a second example that uses both syntax construction functions as
 well as quotation brackets, let's consider a meta program |mapN :: Int
 -> Q Dec| to build ``generic'' |map| functions at
 compile-time. Invoking |$(mapN 1)| should generate the well-known |map
@@ -306,7 +308,6 @@ splice in a binary map function of type |(a -> b -> c) -> [a] -> [b]
   Template Haskell as a code generator, this example is still useful
   though.}.
 
-%format ` = "\; \lq"
 > mapN :: Int -> Q Dec
 > mapN n
 >   | n >= 1    = funD name [cl1, cl2]
@@ -324,76 +325,105 @@ splice in a binary map function of type |(a -> b -> c) -> [a] -> [b]
 >               clause argPatts (normalB [| $first : $rest |]) []
 >     cl2  = clause (replicate (n+1) wildP) (normalB (conE `[])) []
 
-The implementation of |mapN| is very much in the spirit of function
-|curryN| from the first example. For instance, evaluating splice
-|$(mapN 3)| splices in the following map function at compile time:
+The implementation of |mapN| is very much in the spirit of meta
+function |curryN| from the first example. For instance, evaluating
+splice |$(mapN 3)| splices in the following map function at compile
+time:
 
 > map3 f (x:xs) (y:ys) (z:zs) = f x y z : map3 f xs ys zs
 > map3 _ _      _      _      = []
 
 Nonetheless, meta function |mapN| exhibits a couple of new Template
 Haskell features: First, quotation brackets and splices are used in
-several places to abbreviate the object program construction by
-``lifting'' concrete Haskell syntax into the object program. Function
-|apply| (e.g.,) used to generate |map3|'s body |f x y z : map3 f xs ys
-zs| exemplifies quotation brackets; it also highlights how splicing
-(``|$|'') and quotes ( ``|[|| .. ||]|'') cancel each other
-out. Second, identifier quotes (namely, |'[]|) are used to create an
-object program name referring to the built-in empty list constructor
-|[]|.
+several places to abbreviate the object program construction. Function
+|apply| (e.g.) used to generate |map3|'s body |f x y z : map3 f xs ys
+zs| exemplifies the use of quotation brackets; it also highlights how
+splicing (``|$|'') and quotes (``|[|| .. ||]|'') cancel each other
+out. Second, identifier quotes (namely, |`[]|) are used to create an
+object program @Name@ that refers to Haskell's built-in list
+constructor |[]|. Third, the example shows how all three APIs for
+building Template Haskell object programs can be interleaved. The
+lowermost verbose API of building a raw data type inside the quotation
+monad @Q@ can be abbreviated, where possible, with syntax constructor
+functions and quotation brackets.
 
-Moreover, the example shows how all three APIs (Haskell ADTs and the
-quotation monad, syntax construction functions, and quotation
-brackets) can be mixed in the construction of the object program.
+Lastly, the |mapN| example highlights how Haskell's static scoping is
+extended to object programs. The scoping principle for object programs
+is just as in normal Haskell: Identifiers are bound to their lexically
+enclosing binders in scope, where the object program is
+\textit{defined}. Quotation brackets and splices don't alter the
+static scoping, even though splices may bring an object program into
+scope at a location, where a conflicting closure is present. For
+example, consider this snippet:
 
-TODO: Explain extension of static scope to the object level here!
+> x :: Int
+> x = 42
+>
+> static :: Q Exp
+> static = [| x |]
+>
+> plus42 :: Int -> Int
+> plus42 x = $static + x
 
-%% Besides giving access to fresh names via function |newName ::
-%% String -> Q Name|, the monad's main purpose is to extend Haskell's
-%% static scoping discipline to the object programs constructed with
-%% Haskell \cite{th1}. The scoping principle is just as in normal
-%% Haskell: Identifiers inside an object program are bound to their
-%% lexically enclosing binders in scope, when the object program
-%% \textit{is defined}. Achieving static scoping is not straightforward
-%% due to the interplay of splices |$(..)| and a feature that hasn't been
-%% introduced yet: \textit{quotation brackets} |[|| .. ||]|.
+Here the occurrence of |x| in |metaProg| refers to the global
+identifier |x| that is lexically in scope during its definition.
+Splicing in |metaProg| into a different scope later where a different
+local |x| is present (i.e., |plus42|'s local identifier |x|), doesn't
+alter the link between |metaProg|'s |x| and the global identifier
+|x|.
 
-which allows splicing in object programs
-into real Haskell code at arbitrary locations. And at the splice
-point, the names used in the object program might clash with the names
-used in the surrounding Haskell program. \todo{should we add an
-  example here?} Therefore the @Q@ monad provides the function
-|newName :: String -> Q Name| that generates a fresh, non-capturable
-name every time it is invoked.
+%% Static scoping in Template Haskell is achieved by the abstract name
+%% data type @Name@ and its exposed API: of always generating fresh names via
+%% @Q@'s |newName :: String -> Q Name| function as well referring to
+%% regular Haskell identifiers from within an object program using |`|
+%% and |``|.
 
-For instance, if we didn't
-use a monadic computation
+The only exception to static scoping in Template Haskell are the names
+generated by |mkName :: String -> Name|. These names implement dynamic
+scoping, which \textit{can} be captured in spliced in code. Changing
+the previous snippet to:
 
-also occur as binders in the surrounding
-program. Consider for example the following (illegal) snippet:
+> x :: Int
+> x = 42
+>
+> dynamic :: Q Exp
+> dynamic = VarE (mkName "x")
+>
+> times2 :: Int -> Int
+> times2 x = $dynamic + x
 
-< module A where
-<
-< foo = 42
-<
-< metaProg :: Q Exp
-< metaProg = return x
-<
+results in the identifier |x| spliced in by |$dynamic| to be bound to
+the |x| in scope inside the body of |times2|, namely |times2|'s local
+identifier |x| and \textit{not} the global |x|.
 
-< module B where
-<
-< \f -> $(metaProg)
+The final major Template Haskell feature not yet described is
+\textit{program reification}. Briefly, program reification allows a
+meta program to query compile time information about other program
+parts while constructing the object program. It allows to answer
+questions such as ``what's the type of this variable?'', ``which
+constructors does this data type have and and how do they look
+like?'', and ``what are the type class instances of this type
+class?''. The main use case is to generate boilerplate code with
+Template Haskell for manually written program code. For example,
+suppose we've defined the following polymorphic data types for
+optional values, lists, and trees, respectively:
 
-> uncurryN :: Int -> Q Exp
-> uncurryN n = do
->   f  <- newName "f"
->   xs <- replicateM n (newName "x")
->   let ntup = TupP (map VarP xs)
->       app  = foldl AppE (VarE f) (map VarE xs)
->   return $ LamE [VarP f, ntup] app
+> data Option a = None | Some a
+> data List   a = Nil | Cons a (List a)
+> data Tree   a = Leaf a | Node (Tree a) a (Tree a)
 
+Moreover, suppose we want to derive @Foldable@ and @Functor@ instances
+for the type constructors @Option@, @List@, and @Tree@.
 
-\section{Overview of Template Haskell's offered Functionality}
+\todo[inline]{TODO: Describe reification wrt the DeriveFunctorFoldable example!}
+
+For instance, a meta program
+asked to automatically derive a typeclass instance based on the
+definition of a data type needs to know about the data type's value
+constructors and fields. Precisely this information can be obtained
+using reification.
+
+\section{Template Haskell's Implementation in GHC}
 
 * @Language.Haskell.TH@ API (TH.hs, TH/Syntax.hs, TH/Lib.hs, TH/Ppr.hs)
 
@@ -405,13 +435,9 @@ syntax (much less involved than what's offered by GHC's @HsSyn@).
 * High-level constructs of quotation brackets [| ... |] and splice
 operators to construct metaprograms more efficiently.
 
-\section{Template Haskell's Implementation in GHC}
-
 \section{Adding Pattern Synonym Support to Template Haskell}
 
 \section{Conclusion}
-
-\section{Sources}
 
 \bibliographystyle{alpha}
 \bibliography{refs}
