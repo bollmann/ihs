@@ -1,5 +1,5 @@
 \documentclass{article}
-%include lhs2TeX.fmt
+%include polycode.fmt
 %options -fglasgow-exts
 %format tick = "\,\,\textquotesingle"
 %format ticktick = "\,\,\textquotesingle\textquotesingle"
@@ -228,8 +228,8 @@ explicitly performing monadic program parts when constructing a larger
 program. This allows us to write |genCurries| a little more
 succinctly:
 
-> genCurries' :: Int -> Q [Dec]
-> genCurries' n = sequence [ mkCurryDec i | i <- [1..n] ]
+> genCurries :: Int -> Q [Dec]
+> genCurries n = sequence [ mkCurryDec i | i <- [1..n] ]
 >   where mkCurryDec ith = funD name [clause [] (normalB (curryN ith)) []]
 >           where name = mkName $ "curry" ++ show ith
 
@@ -399,101 +399,115 @@ identifier |x| and \textit{not} the global |x|.
 The final major Template Haskell feature not yet described is program
 \textit{reification}. Briefly, reification allows a meta program to
 query compile-time information about other program parts while
-constructing the object program. It allows the meta program to answer
-questions such as ``what's this variable's type?'', ``what are the
-type class instances of this type class?'', or ``which constructors
-does this data type have and and how do they look like?''. The main
-use case is to generate boilerplate code which ``auto-completes''
-manually written program code. A prime example is to generically
-derive type class instances from bare data type definitions.
+constructing the object program. It allows the meta program to inspect
+other program parts to answer questions such as: ``what's this
+variable's type?'', ``what are the type class instances of this type
+class?'', or ``which constructors does this data type have and and how
+do they look like?''. The main use case is to generate boilerplate
+code which ``auto-completes'' manually written program code. A prime
+example is to generically derive type class instances from bare data
+type definitions.
 
 Suppose we've defined the following polymorphic data types for
-representing potential erroneous values, lists, and binary trees,
+representing potentially erroneous values, lists, and binary trees,
 respectively:
 
 > data Result e a = Err e | Ok a
 > data List    a = Nil | Cons a (List a)
 > data Tree    a = Leaf a | Node (Tree a) a (Tree a)
 
-Moreover, suppose we want to derive @Functor@ and @Foldable@ instances
-for all of these types. Deriving such instances manually is
-straightforward, but writing them all out by hand is quite cumbersome
-and repetitive. Especially since it quickly becomes clear that
-deriving these @Functor@ and @Foldable@ instances each follows the
-same algorithmic schema across types @Error e a@, @List a@, @Tree a@,
-and in general any type @T a@.
+Moreover, suppose we want to derive @Functor@ instances for all of
+these types. Deriving these instances manually is straightforward, but
+writing them all out by hand is quite cumbersome. Especially since
+writing a @Functor@ instance follows the same pattern across all of
+the above types and in fact any type @T a@.
 
-To derive a @Functor@ instance for any type @T a@ we have to define
-function |fmap :: (a -> b) -> T a -> T b|. And |fmap|'s implementation
-is dictated precisely by parametricity and the functor laws. By
-parametricity, inside the input value of type @T a@ all values of type
-@a@ must be replaced according to the provided function with values of
-type @b@. Furthermore, by the functor laws, all other shapes of the
-input value of type @T a@ must be retained when transforming it
-through the provided function to the output value of type @T b@.
+To make a type constructor @T@ an instance of @Functor@, function
+|fmap :: (a -> b) -> T a -> T b| needs to be implemented. Its
+definition is hereby precisely fixed by parametricity and the functor
+laws: By parametricity, all values of type @a@ must be replaced
+according to the provided function with values of type
+@b@. Furthermore, by the functor laws, all other shapes of the input
+value of type @T a@ must be preserved when transforming it to the
+output value of type @T b@.
 
-Similarly, a @Foldable@ instance for any type @T a@ can be derived by
-providing function |foldMap :: Monoid m => (a -> m) -> T a ->
-m|. Again by parametricity and the foldable laws, |foldMap| needs to
-map the provided function over all values of type @a@ and then fold
-the resulting monoid values together with |<> :: Monoid m => m -> m ->
-m|. Values inside the input of type @T a@ that cannot be mapped to
-monoid values are ``forgotten'' by replacing them with the monoid's
-neutral element |mempty :: Monoid m => m|.
+The idea of this algorithm is implemented by meta function
+|deriveFunctor :: Name -> Q [Dec]| below. Given the name of a type
+constructor (e.g. @Result@, @List@, etc.), it derives the code for
+this type constructor's @Functor@ instance.
 
-Following the above two ideas for constructing @Functor@ and
-@Foldable@ instances algorithmically from a data type's bare
-definition, we start implementing a corresponding meta program as
-follows:
-
+> data Deriving = Deriving { tyCon :: Name, tyVar :: Name }
+>
 > deriveFunctor :: Name -> Q [Dec]
 > deriveFunctor ty
->   = deriveInstanceFor FunctorDeriving ``Functor `fmap ty
+>   = do (TyConI tyCon) <- reify ty
+>        (tyConName, tyVars, cs) <- case tyCon of
+>          DataD _ nm tyVars cs _   -> return (nm, tyVars, cs)
+>          NewtypeD _ nm tyVars c _ -> return (nm, tyVars, [c])
+>          _ -> fail "deriveFunctor: tyCon may not be a type synonym."
 >
-> deriveFoldable :: Name -> Q [Dec]
-> deriveFoldable ty
->   = deriveInstanceFor FoldableDeriving ``Foldable `foldMap ty
-> data DerivingType = FoldableDeriving | FunctorDeriving
+>        let (KindedTV tyVar StarT) = last tyVars
+>            instanceType           = conT ``Functor `appT`
+>              (foldl apply (conT tyConName) (init tyVars))
 >
-> data InstanceDeriving
->   = Deriving
->       { what :: DerivingType
->       , typeClass :: Name
->       , function  :: Name
->       , tyCon     :: Name
->       , tyVar     :: Name
->       }
->
-> deriveInstanceFor :: DerivingType -> Name -> Name -> Name -> Q [Dec]
-> deriveInstanceFor derivingType typeClass fun ty = do
->   (TyConI tyCon) <- reify ty
->   (tyConName, typeVars, constructors) <- case tyCon of
->     DataD _ nm tys cs _   -> return (nm, tys, cs)
->     NewtypeD _ nm tys c _ -> return (nm, tys, [c])
->     _ -> fail "deriveInstanceFor: tyCon may not be a type synonym."
->
->   let (KindedTV typeVar StarT) = last typeVars
->       instanceType             = ConT typeClass `AppT`
->         (foldl apply (ConT tyConName) (init typeVars))
->
->   putQ $ Deriving derivingType typeClass fun tyConName typeVar
->   funDecl <- genFunDecl constructors
->   return [InstanceD [] instanceType [funDecl]]
+>        putQ $ Deriving tyConName tyVar
+>        sequence [instanceD (return []) instanceType [genFmap cs]]
 >   where
->     apply t (PlainTV name)    = AppT t (VarT name)
->     apply t (KindedTV name _) = AppT t (VarT name)
+>     apply t (PlainTV name)    = appT t (varT name)
+>     apply t (KindedTV name _) = appT t (varT name)
+>
+> genFmap :: [Con] -> Q Dec
+> genFmap constructors
+>   = do funD `fmap (map genFmapClause constructors)
+>
+> genFmapClause :: Con -> Q Clause
+> genFmapClause (NormalC name fieldTypes)
+>   = do f          <- newName "f"
+>        fieldNames <- replicateM (length fieldTypes) (newName "x")
+>
+>        let pats = varP f:[conP name (map varP fieldNames)]
+>            body = normalB $ appsE $
+>              conE name : map (newField f) (zip fieldNames fieldTypes)
+>
+>        clause pats body []
+>
+> newField :: Name -> (Name, StrictType) -> Q Exp
+> newField f (x, (_, fieldType))
+>   = do Just (Deriving typeCon typeVar) <- getQ
+>        case fieldType of
+>          VarT typeVar' | typeVar' == typeVar ->
+>            [| $(varE f) $(varE x) |]
+>          ty `AppT` VarT typeVar' |
+>            leftmost ty == (ConT typeCon) && typeVar' == typeVar ->
+>              [| fmap $(varE f) $(varE x) |]
+>          _ -> [| $(varE x) |]
+>
+> leftmost :: Type -> Type
+> leftmost (AppT ty1 _) = leftmost ty1
+> leftmost ty           = ty
 
-The main entry points into the meta program are functions
-|deriveFunctor :: Name -> Q [Dec]| and |deriveFoldable :: Name -> Q
-[Dec]|, respectively. Given the name of a type constructor @T@, the
-purpose of |deriveFunctor| is to generate a @Functor@ instance for
-this type constructor; similarly |deriveFoldable|'s purpose is to
-create a type constructor's @Foldable@ instance.
+For example, running the splice |$(deriveFunctor ``Tree)| generates the
+following code:
 
-Both functions are implemented in terms of helper function
-|deriveInstanceFor|, which generates the |fmap| code for a @Functor@
-instance or the |foldMap| definition of a @Foldable@ instance,
-respectively. 
+> instance Functor Tree where
+>   fmap f (Leaf x)     = Leaf (f x)
+>   fmap f (Node l x r) = Node (fmap f l) (f x) (fmap f r)
+
+Meta function |deriveFunctor| hereby shows reification in
+action. Given the name of a data type |ty|, it calls the @Q@ monad's
+function |reify :: Name -> Q Info|, which returns compile-time
+information about this name. ... todo{finish this, we're almost there!}
+
+%% Similarly, a @Foldable@ instance for any type @T a@ can be derived by
+%% providing function |foldMap :: Monoid m => (a -> m) -> T a ->
+%% m|. Again by parametricity and the foldable laws, |foldMap| needs to
+%% map the provided function over all values of type @a@ and then fold
+%% the resulting monoid values together with |<> :: Monoid m => m -> m ->
+%% m|. Values inside the input of type @T a@ that cannot be mapped to
+%% monoid values are ``forgotten'' by replacing them with the monoid's
+%% neutral element |mempty :: Monoid m => m|.
+
+
 
 Hence, writing an |fmap| definition for a type constructor @T@ needs
 to provide a separate clause for each of @T a@'s value
@@ -513,32 +527,6 @@ generate appropriate @Functor@ and @Foldable@ instances.
 
 In the same manner, deriving @Foldable@ instances follows a (slightly
 different, yet) coherent schema for all three type constructors.
-
-%% We cannot use Haskell's standard @deriving@ mechanism to derive these
-%% instances, as it only supports deriving instances for type classes
-%% @Show@, @Read@, @Eq@, @Ord@, @Enum@, and @Ix@, respectively.
-
-%% > instance Functor (Error e) where
-%% >   fmap f (Err x) = Err x
-%% >   fmap f (Ok  x) = Ok (f x)
-%% >
-%% > instance Functor List where
-%% >   fmap f Nil         = Nil
-%% >   fmap f (Cons x xs) = Cons (f x) (fmap f xs)
-%% >
-%% > instance Functor Tree where
-%% >   fmap f (Leaf x)     = Leaf (f x)
-%% >   fmap f (Node l x r) = Node (fmap f l) (f x) (fmap f r)
-%% >
-%% > instance Foldable (Error e) where
-%% >   foldMap f (Err x) = mempty
-%% >   foldMap f (Ok  x) = f x
-%% >
-%% > 
-%% ...
-
-%% \todo{shall we add all of these manual deriving instances? Or remove
-%%   them all?}
 
 \section{Template Haskell's Implementation in GHC}
 
