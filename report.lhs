@@ -400,13 +400,13 @@ The final major Template Haskell feature not yet described is program
 \textit{reification}. Briefly, reification allows a meta program to
 query compile-time information about other program parts while
 constructing the object program. It allows the meta program to inspect
-other program parts to answer questions such as: ``what's this
+other program pieces to answer questions such as: ``what's this
 variable's type?'', ``what are the type class instances of this type
 class?'', or ``which constructors does this data type have and and how
 do they look like?''. The main use case is to generate boilerplate
-code which ``auto-completes'' manually written program code. A prime
-example is to generically derive type class instances from bare data
-type definitions.
+code which ``auto-completes'' manually written code. A prime example
+is to generically derive type class instances from bare data type
+definitions.
 
 Suppose we've defined the following polymorphic data types for
 representing potentially erroneous values, lists, and binary trees,
@@ -494,39 +494,34 @@ following code:
 >   fmap f (Node l x r) = Node (fmap f l) (f x) (fmap f r)
 
 Meta function |deriveFunctor| hereby shows reification in
-action. Given the name of a data type |ty|, it calls the @Q@ monad's
-function |reify :: Name -> Q Info|, which returns compile-time
-information about this name. ... todo{finish this, we're almost there!}
+action. Calling function |reify :: Name -> Q Info| on the input type
+constructor's name yields information about this data type's
+definition. It thus learns whether the data type was defined using the
+@data@ or @newtype@ keyword, which constructors it defines and what
+their shapes are. Based on the learned structure, |deriveFunctor| is
+then able to generate a suitable definition of |fmap| and its
+different clauses via helper functions |genFmap|, |genFmapClause|, and
+|newField|, respectively. The idea is to generate one |fmap| clause
+for each of the data type's constructors. And each clause then
+transforms its constructor by recursively modifying all of the
+constructor's fields of type @a@ through |fmap|'s function @f@, while
+retaining all other shapes.
 
-%% Similarly, a @Foldable@ instance for any type @T a@ can be derived by
-%% providing function |foldMap :: Monoid m => (a -> m) -> T a ->
-%% m|. Again by parametricity and the foldable laws, |foldMap| needs to
-%% map the provided function over all values of type @a@ and then fold
-%% the resulting monoid values together with |<> :: Monoid m => m -> m ->
-%% m|. Values inside the input of type @T a@ that cannot be mapped to
-%% monoid values are ``forgotten'' by replacing them with the monoid's
-%% neutral element |mempty :: Monoid m => m|.
-
-
-
-Hence, writing an |fmap| definition for a type constructor @T@ needs
-to provide a separate clause for each of @T a@'s value
-constructors. Each clause hereby transforms @T@'s
-value constructor at hand, all of its field values of type @a@ are
-replaced according to function |a -> b| given to |fmap|; all other
-field values stay the same. Furthermore, to recursively replace the
-data type, values of type @T a@ have to be recursively processed by a
-recursive call to the |fmap| function itself.
-
-Therefore it would be nice to write meta functions |deriveFunctor ::
-Name -> Q [Dec]| and |deriveFoldable :: Name -> Q [Dec]| which, given
-the name of a type constructor (e.g., @Result e@, @List@, etc.),
-generate appropriate @Functor@ and @Foldable@ instances.
-
-
-
-In the same manner, deriving @Foldable@ instances follows a (slightly
-different, yet) coherent schema for all three type constructors.
+In an analogous manner, a function |deriveFoldable :: Name -> Q [Dec]|
+can be written to derive a data type's @Foldable@ instance by
+providing function |foldMap :: Monoid m => (a -> m) -> T a ->
+m|. Again, |foldMap|'s definition follows directly from a data type's
+bare definition, which can be observed by means of
+reification\footnote{In fact, the example at
+  https://www.github.com/bollmann/th-samples/DeriveFunctorFoldable.hs
+  implements a (slightly more involved) meta program to derive both
+  @Functor@ and @Foldable@ instances in a uniform way.}. This
+highlights particularly how the functionality offered by Template
+Haskell provides a low-level API into the GHC compiler to manipulate
+abstract syntax trees at compile-time. This mechanism is quite
+powerful and even allows to simulate some of GHC's offered extensions,
+e.g., @-XDeriveFunctor@ and @-XDeriveFoldable@, to be implemented as a
+library on top of Template Haskell.
 
 \section{Template Haskell's Implementation in GHC}
 
