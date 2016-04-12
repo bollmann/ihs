@@ -30,49 +30,82 @@
 
 \section{Introduction}
 
-\todo{Write me!}
+%% The central power of Template Haskell lies in the construction of meta
+%% programs, that is, programs which construct other programs due to
+%% their execution at compile time. To avoid confusion in the sequel, we
+%% distinguish between meta programs and the programs they compute. Meta
+%% programs are programs that take as their input data other programs,
+%% which they manipulate by some algorithmic means. Object programs, on
+%% the other hand, are the programs that act like data to the meta
+%% programs, i.e., the programs being manipulated by and resulting as
+  %% output from the meta programs.
 
-- What is Template Haskell? How did it come about? (Template Haskell
+%% Compile-time meta programming has many use cases. For example, it
+%% empowers a user to write many, syntactically different, object
+%% programs all at once by means of a single meta program. All that is
+%% needed is a uniform, algorithmic description to create the different
+%% object programs. And the meta program then precisely implements the
+%% algorithm to compute all the different object programs as its
+%% result. This proves useful for example to avoid writing the same
+  %% repetitive, boilerplate code over and over again.
+
+\todo{Finish me!}
+
+Template Haskell (TH) is the standard framework for doing type-safe,
+compile-time meta programming in the Glasgow Haskell Compiler
+(GHC). It allows writing Haskell meta programs, which are typechecked
+and run at compile-time, and which produce Haskell programs as the
+results of their execution.
+
+Template Haskell was conceived by Tim Sheard and Simon Peyton Jones in
+\cite{th1} by drawing on the ideas of Lisp macros, but in the typed
+setting of Haskell. Since then, the original TH implementation has
+changed and improved quite a bit \cite{th2, qq, th3}. Most notably, in
+2007 Geoffrey Mainland added support for quasi quoting \cite{qq},
+which makes the embedding of domain specific languages even easier.
+
+As it exists today, Template Haskell has two main areas of
+application: Haskell code generation and facilitating the embedding of
+domain specific languages.
+
+As a code generator, Template Haskell empowers a user to write many,
+syntactically different, object programs all at once by means of a
+single meta program. All that is needed is a uniform, algorithmic
+description to create the different object programs. And the meta
+program then precisely implements the algorithm to compute all the
+different object programs as its result. This proves useful for
+example to avoid writing the same repetitive, boilerplate code over
+and over again. To this end, Template Haskell is used (e.g.,) in the
+@aeson@ library to automatically derive a data type's @ToJSON@ and
+@FromJSON@ instances for JSON serialization; similarly, the @lens@
+library provides meta functions to mechanically derive a data type's
+lenses, etc.
+
+As a framework for creating domain specific languages (EDSLs),
+Template Haskell allows a user to embed another programming language
+inside a Haskell program. This enables writing parts of a Haskell
+program in the concrete, domain specific syntax of a different
+programming language. It has the benefit to think about -- and express
+-- domain specific problems in the language best suited for the
+task. In particular, it lets a user focus on their domain specific
+problem and removes all additional language burdens induced by
+inconvenient syntax, unsuited control constructs, etc. Programs from
+the embedded language are parsed and translated into corresponding
+(but syntactically heavier) Haskell code at compile-time by Template
+Haskell. In this sense, (e.g.,) the shakespearean template languages
+build on Template Haskell. They expose succinct domain specific
+languages to embed HTML, CSS, and Javascript code inside of a Haskell
+based web application.
+
+\todo{finish me! Write about the organization of the following sections.}
+
+\todo[inline]{
+  - What is Template Haskell? How did it come about? (Template Haskell
 Paper1, Paper2, Quasi-Quote paper), Adoption of TH in real libraries
 to solve real-world problems (Yesod's Shakespearean languages!)?
 
-- Motivation for TH:
-* Automate writing syntactically different, yet somehow similar programs all at once.
-  (e.g. generic mapN, zipN, ... functions, ...) -> reduce having to
-  repeatedly write the same code.
-
-* Automate writing repetitive/boilerplate code (deriving instances).
-
-* Allow the embedding of domain specific languages.
-- type safe regular expressions. (?)
-- SubstLang
-- much more powerful: type-safe routes/etc. in Yesod.
-
 - Even though its called the ugly under the HS extensions, it is the
-necessary. A LOT (see reverse dependencies) of packages depend on it.
-
-- What are the main benefits of TH?
-  1. Write many programs using just a single meta program.
-  2. EDSLs.
-
-The central power of Template Haskell lies in the construction of meta
-programs, that is, programs which construct other programs due to
-their execution at compile time. To avoid confusion in the sequel, we
-distinguish between meta programs and the programs they compute. Meta
-programs are programs that take as their input data other programs,
-which they manipulate by some algorithmic means. Object programs, on
-the other hand, are the programs that act like data to the meta
-programs, i.e., the programs being manipulated by and resulting as
-output from the meta programs.
-
-Compile-time meta programming has many use cases. For example, it
-empowers a user to write many, syntactically different, object
-programs all at once by means of a single meta program. All that is
-needed is a uniform, algorithmic description to create the different
-object programs. And the meta program then precisely implements the
-algorithm to compute all the different object programs as its
-result. This proves useful for example to avoid writing the same
-repetitive, boilerplate code over and over again.
+necessary. A LOT (see reverse dependencies) of packages depend on it.}
 
 \section{Learning Template Haskell by Examples}
 
@@ -82,6 +115,16 @@ first set of examples I will show-case Template Haskell's potential as
 a code generator; in the second set of examples I'll highlight its
 facilities to create type-safe embedded domain specific languages
 (EDSLs).
+
+To avoid confusion in the sequel, we distinguish between Template
+Haskell's compile-time meta programs and the object programs they
+compute. Meta programs are programs that work on programs; they
+manipulate other programs by some algorithmic means. Object programs,
+on the other hand, are the programs that act like data to the meta
+programs, i.e., the programs being manipulated by and resulting as
+output from the meta programs.
+
+\subsection{Template Haskell as a Code Generator}
 
 As an introductory example, consider Haskell's @Prelude@ function
 |curry :: ((a,b) -> c) -> a -> b -> c|, which converts a function
@@ -129,9 +172,13 @@ resulting object program to real Haskell code. That is, enclosing a
 Haskell meta program with the ``|$|'' operator means to evaluate it
 and to splice in the generated Haskell program as the result. To
 ensure type safety, the meta program is typechecked before being run
-at compile time. For example, writing |$(curryN 3)| evaluates the meta
-program of the |curry3| function at compile time and puts the result
-|\f x1 x2 x3 -> f (x1, x2, x3)| in place of the splice.
+at compile time. Moreover, after splicing in the resulting object
+program the entire Haskell module is typechecked again from
+scratch. For example, writing |$(curryN 3)| evaluates the meta
+function |curryN 3| at compile time and puts the resulting object
+program |\f x1 x2 x3 -> f (x1, x2, x3)| in place of the splice. On
+this spliced in program (and its context), typechecking now restarts
+from scratch.
 
 To generate function declarations for the first \(n\) curry functions,
 we can devise a further meta program on top of |curryN| as follows:
@@ -523,9 +570,17 @@ powerful and even allows to simulate some of GHC's offered extensions,
 e.g., @-XDeriveFunctor@ and @-XDeriveFoldable@, to be implemented as a
 library on top of Template Haskell.
 
+\subsection{Template Haskell for building Embedded Domain specific
+  Languages (EDSLs)}
+
+Besides its code generation abilities, Template Haskell is
+particularly suited to build embedded domain specific languages inside
+of Haskell. For example, suppose we want to 
+
 \section{Template Haskell's Implementation in GHC}
 
-* @Language.Haskell.TH@ API (TH.hs, TH/Syntax.hs, TH/Lib.hs, TH/Ppr.hs)
+* @Language.Haskell.TH@ API (TH.hs, TH/Syntax.hs, TH/Lib.hs,
+TH/Ppr.hs)
 
 * Offers a small, yet complete AST of Haskell's concrete surface
 syntax (much less involved than what's offered by GHC's @HsSyn@).
