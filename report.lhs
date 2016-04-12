@@ -93,9 +93,9 @@ inconvenient syntax, unsuited control constructs, etc. Programs from
 the embedded language are parsed and translated into corresponding
 (but syntactically heavier) Haskell code at compile-time by Template
 Haskell. In this sense, (e.g.,) the shakespearean template languages
-build on Template Haskell. They expose succinct domain specific
-languages to embed HTML, CSS, and Javascript code inside of a Haskell
-based web application.
+from the @shakespeare@ library build on Template Haskell. They expose
+succinct domain specific languages to embed HTML, CSS, and Javascript
+code inside of a Haskell based web application.
 
 \todo{finish me! Write about the organization of the following sections.}
 
@@ -573,9 +573,36 @@ library on top of Template Haskell.
 \subsection{Template Haskell for building Embedded Domain specific
   Languages (EDSLs)}
 
-Besides its code generation abilities, Template Haskell is
-particularly suited to build embedded domain specific languages inside
-of Haskell. For example, suppose we want to 
+To embed a domain specific language with Template Haskell, a
+\textit{quasi quoter} has to be specified. Formally, a quasi quoter is
+a value of type @QuasiQuoter@ defined as follows:
+
+> data QuasiQuoter = QuasiQuoter {
+>   quoteExp  :: String -> Q Exp,
+>   quotePat  :: String -> Q Pat,
+>   quoteType :: String -> Q Type,
+>   quoteDec  :: String -> Q Dec
+> }
+
+A quasi quoter thus consists of four parsers which parse strings into
+abstract Haskell syntax. Its purpose is to parse the embedded domain
+specific language and to convert it into corresponding Haskell
+syntax. Having defined a quasi quoter, say |qq|, it can be invoked by
+writing |[qq|| .. ||]|. Anything inside the quasi quote is treated as
+part of the embedded domain specific language.
+
+As a first example for embedding a different language into a Haskell
+program, suppose we want to build a simple web application in
+Haskell. The web application's business logic sits hereby on top of a
+Haskell webserver which receives and answers client requests: A
+client's incoming page request is used to lookup the page contents in
+a database. The page contents are then used to populate an HTML
+template which is the same accross all of the web application's web
+pages.
+
+Using Template Haskell and its quasiquotes feature, we can embed the
+HTML template natively into our web application. 
+
 
 \section{Template Haskell's Implementation in GHC}
 
@@ -585,10 +612,9 @@ TH/Ppr.hs)
 * Offers a small, yet complete AST of Haskell's concrete surface
 syntax (much less involved than what's offered by GHC's @HsSyn@).
 
-* provides means of static and dynamic scope resolution mechanisms. (Q Monad)
-
-* High-level constructs of quotation brackets [| ... |] and splice
-operators to construct metaprograms more efficiently.
+* Convert.hs:
+* DsMeta.hs:
+* TcSplice.hs:
 
 \section{Adding Pattern Synonym Support to Template Haskell}
 
