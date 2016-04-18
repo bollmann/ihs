@@ -25,8 +25,8 @@
   TH's overall functionality. Furthermore, I review Template Haskell's
   implementation in GHC from a high-level perspective. Lastly, I
   describe my experience of extending the Template Haskell
-  implementation inside GHC to also support the newly added Pattern
-  Synonyms feature.}
+  implementation inside GHC to also support the newly added
+  \texttt{PatternSynonyms} language extension.}
 
 \section{Introduction}
 
@@ -59,10 +59,10 @@ results of their execution.
 
 Template Haskell was conceived by Tim Sheard and Simon Peyton Jones in
 \cite{th1} by drawing on the ideas of Lisp macros, but in the typed
-setting of Haskell. Since then, the original TH implementation has
-changed and improved quite a bit \cite{th2, qq, th3}. Most notably, in
-2007 Geoffrey Mainland added support for quasi quoting \cite{qq},
-which makes the embedding of domain specific languages even easier.
+setting of Haskell. Since then, the original implementation has
+evolved quite a bit \cite{th2, qq, th3}. Most notably, in 2007
+Geoffrey Mainland added support for quasi quoting \cite{qq}, which
+makes the embedding of domain specific languages yet easier.
 
 As it exists today, Template Haskell has two main areas of
 application: Haskell code generation and facilitating the embedding of
@@ -75,27 +75,26 @@ description to create the different object programs. And the meta
 program then precisely implements the algorithm to compute all the
 different object programs as its result. This proves useful for
 example to avoid writing the same repetitive, boilerplate code over
-and over again. To this end, Template Haskell is used (e.g.,) in the
-@aeson@ library to automatically derive a data type's @ToJSON@ and
-@FromJSON@ instances for JSON serialization; similarly, the @lens@
-library provides meta functions to mechanically derive a data type's
-lenses, etc.
+and over again. To this end, Template Haskell is used (among many
+others) in the @aeson@ library to automatically derive a data type's
+@ToJSON@ and @FromJSON@ instances for JSON serialization; or in the
+@lens@ library to mechanically create a data type's lenses.
 
 As a framework for creating domain specific languages (EDSLs),
-Template Haskell allows a user to embed another programming language
-inside a Haskell program. This enables writing parts of a Haskell
-program in the concrete, domain specific syntax of a different
-programming language. It has the benefit to think about -- and express
--- domain specific problems in the language best suited for the
-task. In particular, it lets a user focus on their domain specific
-problem and removes all additional language burdens induced by
-inconvenient syntax, unsuited control constructs, etc. Programs from
-the embedded language are parsed and translated into corresponding
-(but syntactically heavier) Haskell code at compile-time by Template
-Haskell. In this sense, (e.g.,) the shakespearean template languages
-from the @shakespeare@ library build on Template Haskell. They expose
-succinct domain specific languages to embed HTML, CSS, and Javascript
-code inside of a Haskell based web application.
+Template Haskell allows a user to embed programs written in another
+programming language inside a Haskell program. This enables writing
+parts of the program in the concrete, domain specific syntax of a
+different programming language. It has the benefit to think about --
+and to express -- domain specific problems in the language best suited
+for the task. In particular, it lets a user focus on their domain
+specific problem and removes all additional language burdens induced
+by inconvenient syntax, unsuited control constructs, etc. Programs
+from the embedded language are parsed and translated into
+corresponding (but syntactically heavier) Haskell code at compile-time
+by Template Haskell. In this sense, (e.g.,) the shakespearean template
+languages from the @shakespeare@ library use Template Haskell at their
+core. They expose succinct domain specific languages to build HTML,
+CSS, and Javascript code inside of a Haskell based web application.
 
 \todo{finish me! Write about the organization of the following sections.}
 
@@ -118,11 +117,11 @@ facilities to create type-safe embedded domain specific languages
 
 To avoid confusion in the sequel, we distinguish between Template
 Haskell's compile-time meta programs and the object programs they
-compute. Meta programs are programs that work on programs; they
-manipulate other programs by some algorithmic means. Object programs,
-on the other hand, are the programs that act like data to the meta
-programs, i.e., the programs being manipulated by and resulting as
-output from the meta programs.
+generate. Meta programs are programs that compute programs as their
+data; they manipulate other programs by some algorithmic means. Object
+programs, on the other hand, are the programs that act like data to
+the meta programs, i.e., the programs being manipulated by and
+resulting as output from the meta programs.
 
 \subsection{Template Haskell as a Code Generator}
 
@@ -168,17 +167,17 @@ syntax.
 To run a meta program like |curryN| at compile time, Template
 Haskell's \textit{splice} operator ``|$|'' is used. When applied to a
 @Q Exp@ computation it performs this computation and converts the
-resulting object program to real Haskell code. That is, enclosing a
-Haskell meta program with the ``|$|'' operator means to evaluate it
-and to splice in the generated Haskell program as the result. To
-ensure type safety, the meta program is typechecked before being run
-at compile time. Moreover, after splicing in the resulting object
-program the entire Haskell module is typechecked again from
-scratch. For example, writing |$(curryN 3)| evaluates the meta
-function |curryN 3| at compile time and puts the resulting object
-program |\f x1 x2 x3 -> f (x1, x2, x3)| in place of the splice. On
-this spliced in program (and its context), typechecking now restarts
-from scratch.
+resulting object program to real Haskell code. Hence, enclosing a
+Haskell meta program by ``|$(..)|'' means to evaluate it and to splice
+in the generated Haskell code as the result of the splice. To ensure
+type safety, the meta program is type checked before being run at
+compile time. Moreover, after splicing in the resulting object program
+the entire Haskell module is typechecked again from scratch. For
+example, writing |$(curryN 3)| typechecks and then evaluates the meta
+function |(curryN 3)| at compile time and puts the resulting object
+program |\f x1 x2 x3 -> f (x1, x2, x3)| in place of the splice. After
+running all of a Haskell module's meta functions, typechecking
+restarts from scratch.
 
 To generate function declarations for the first \(n\) curry functions,
 we can devise a further meta program on top of |curryN| as follows:
@@ -205,34 +204,33 @@ declarations that bind the anonymous lambda abstractions built by
 |curryN|. Furthermore, to name the function bindings, we use the
 function |mkName :: String -> Name| instead of |newName :: String -> Q
 Name|. The reason is that here we want to generate functions |curry1|
-to |curry20| with known names, so they can be captured and referred to
-from other parts of the program.
+to |curry20| with exactly the prescribed names, so they can be
+captured and referred to from other parts of the program.
 
-Evaluating Haskell code at compile time and splicing in the generated
-object programs as regular Haskell code is the first central building
-block of Template Haskell. Two further core mechanisms are shown in
-the implementations of |curryN| and |genCurries|: algebraic data types
-and the quotation monad @Q@.
+Evaluating Haskell (meta) programs at compile time and splicing in the
+generated object programs as regular Haskell code is the first central
+building block of Template Haskell. The two other core mechanisms are
+exhibited by the implementations of |curryN| and |genCurries|:
+algebraic data types and the quotation monad @Q@.
 
-Object programs created by Template Haskell are represented by regular
-algebraic data types in the form of abstract syntax trees. In the
-|curryN| example, we represented the generated lambda abstraction as a
-Haskell expression with constructors @VarE@, @LamE@, @AppE@, @TupE@,
-etc. \todo{should we remove this example?} This Haskell expression
-furthermore consisted of pattern expressions for the matched
-variables, so we also used @Pat@'s @VarP@ constructor. Similarly, in
-the |genCurries| example we represented the generated function
-declaration using the @Dec@ data type and used constructors @FunD@,
-@Clause@, and @NormalB@ to represent it. In general, the Template
-Haskell library provides algebraic data types @Exp@, @Pat@, @Dec@, and
-@Type@ to represent Haskell's surface syntax of expressions, patterns,
-declarations, and types, respectively. Virtually every concrete
-Haskell syntactic construct has a corresponding abstract syntax
-constructor in one of the four ADTs. Furthermore, all Haskell
-identifiers are represented by the abstract @Name@ data type. By
-representing object programs as regular algebraic data types (and thus
-as data), normal Haskell can be used as the meta programming language
-to build object programs.
+Object programs created by Template Haskell are represented as regular
+algebraic data types, describing a program in the form of an abstract
+syntax tree. The Template Haskell library provides algebraic data
+types @Exp@, @Pat@, @Dec@, and @Type@ to represent Haskell's surface
+syntax of expressions, patterns, declarations, and types,
+respectively. Virtually every concrete Haskell syntactic construct has
+a corresponding abstract syntax constructor in one of the four
+ADTs. Furthermore, all Haskell identifiers are represented by the
+abstract @Name@ data type. By representing object programs as regular
+algebraic data types (and thus as data), normal Haskell can be used as
+the meta programming language to build object programs.
+
+%% The |curryN| example used a few of the available @Exp@ and @Pat@
+%% constructors (namely @VarE@, @LamE@, @AppE@, @TupE@, and @VarP@,
+%% respectively) to represent the generated Haskell expression and its
+%% patterns. Similarly, in the |genCurries| example we represented the
+%% generated function declaration using the @Dec@ constructors @FunD@,
+%% @Clause@, and @NormalB@.
 
 Second, TH object programs are built inside the quotation monad
 @Q@. This monad is performed by the splice operator ``|$|'' at
@@ -250,8 +248,8 @@ constitutes the functionality of Template Haskell. However,
 constructing object programs in terms of their abstract syntax trees
 is quite verbose and leads to clumsy meta programs. Therefore the
 Template Haskell API also provides two further interfaces to build
-object programs more conveniently: \textit{syntax construction
-  functions} and \textit{quotation brackets}.
+object programs more tersely: \textit{syntax construction functions}
+and \textit{quotation brackets}.
 
 Syntax construction functions directly relate to the syntax
 constructors from the algebraic data types @Exp@, @Pat@, @Dec@, and
@@ -272,8 +270,8 @@ perform |curryN| and bind its result to |cury|. The reason is that we
 have to account for |curryN|'s generation of fresh names before we can
 continue. Using syntax construction functions, however, frees us from
 explicitly performing monadic program parts when constructing a larger
-program. This allows us to write |genCurries| a little more
-succinctly:
+program. This allows us to hide the monadic construction of
+|genCurries|, thus making the code a little shorter:
 
 > genCurries :: Int -> Q [Dec]
 > genCurries n = sequence [ mkCurryDec i | i <- [1..n] ]
@@ -293,14 +291,15 @@ only difference lies in their types:
 \end{center}
 
 While the syntax constructors work with raw Haskell expressions, the
-syntax construction functions expect Haskell expressions wrapped
-inside monad @Q@. They construct an object program directly in @Q@,
-thus allowing the API consumer to not have to do all the monadic
-wrapping and unwrapping manually. For every syntax constructor, there
-is a corresponding monadic syntax construction function provided. This
-gives the programmer the choice to either explicitly construct object
-programs inside the @Q@ monad or to do the monadic construction
-implicitly with syntax construction functions.
+syntax construction functions expect monadic Haskell expressions. They
+construct an object program directly in @Q@, thus allowing the API
+consumer to not have to do all the monadic wrapping and unwrapping
+manually. For every syntax constructor, there is a corresponding
+monadic syntax construction function provided.
+
+%% This gives the programmer the choice to either explicitly construct
+%% object programs inside the @Q@ monad or to do the monadic construction
+%% implicitly with syntax construction functions.
 
 On top of the syntax construction functions, quotation brackets are a
 further shortcut for representing Haskell code. They allow to specify
@@ -328,15 +327,15 @@ brackets for quoting Haskell expressions (|[e|| .. ||]|), patterns
 (|[p|| .. ||]|), declarations (|[d|| .. ||]|), and types (|[t||
   .. ||]|). Writing |[|| .. ||]| is hereby just another way of saying
 |[e|| .. ||]|. Using quotation brackets in a sense ``lifts'' Haskell's
-concrete syntax into corresponding object program expressions in the
-@Q@ monad. By doing so, quotation brackets represent the dual of the
-already introduced splice operator ``|$|'': Evaluating a meta program
-with ``|$|'' splices in the generated object program as real Haskell
-code; in contrast the quotation brackets |[|| .. ||]| turn real
-Haskell code into an object program. Consequently, quotation brackets
-and the splice operator cancel each other out. The equation |$([|| e
-  ||]) = e| holds for all expressions \(e\) and similar equations hold
-for declarations, and types \cite{th2}.
+concrete syntax into corresponding object program expressions inside
+the @Q@ monad. By doing so, quotation brackets represent the dual of
+the already introduced splice operator ``|$|'': Evaluating a meta
+program with ``|$|'' splices in the generated object program as real
+Haskell code; in contrast the quotation brackets |[|| .. ||]| turn
+real Haskell code into an object program. Consequently, quotation
+brackets and the splice operator cancel each other out. The equation
+|$([|| e ||]) = e| holds for all expressions \(e\) and similar
+equations hold for declarations, and types \cite{th2}.
 
 In addition, there is support for quoting Haskell (value and type)
 identifiers as corresponding Template Haskell @Name@s. This allows to
@@ -383,12 +382,12 @@ time:
 
 Nonetheless, meta function |mapN| exhibits a couple of new Template
 Haskell features: First, quotation brackets and splices are used in
-several places to abbreviate the object program construction. Function
-|apply| (e.g.) used to generate |map3|'s body |f x y z : map3 f xs ys
-zs| exemplifies the use of quotation brackets; it also highlights how
-splicing (``|$|'') and quotes (``|[|| .. ||]|'') cancel each other
-out. Second, identifier quotes (namely, |`[]|) are used to create an
-object program @Name@ that refers to Haskell's built-in list
+several places to abbreviate the object program construction. For
+example, helper |apply| used to generate |map3|'s body |f x y z : map3
+f xs ys zs| exemplifies the use of quotation brackets; it also
+highlights how splicing (``|$|'') and quotes (``|[|| .. ||]|'') cancel
+each other out. Second, identifier quotes (namely, |`[]|) are used to
+create an object program @Name@ that refers to Haskell's built-in list
 constructor |[]|. Third, the example shows how all three APIs for
 building Template Haskell object programs can be interleaved. The
 lowermost verbose API of building a raw data type inside the quotation
@@ -562,47 +561,114 @@ bare definition, which can be observed by means of
 reification\footnote{In fact, the example at
   https://www.github.com/bollmann/th-samples/DeriveFunctorFoldable.hs
   implements a (slightly more involved) meta program to derive both
-  @Functor@ and @Foldable@ instances in a uniform way.}. This
+  @Functor@ and @Foldable@ instances in a single framework.}. This
 highlights particularly how the functionality offered by Template
 Haskell provides a low-level API into the GHC compiler to manipulate
 abstract syntax trees at compile-time. This mechanism is quite
-powerful and even allows to simulate some of GHC's offered extensions,
-e.g., @-XDeriveFunctor@ and @-XDeriveFoldable@, to be implemented as a
-library on top of Template Haskell.
+powerful and even allows to simulate some of GHC's offered language
+extensions, e.g., @-XDeriveFunctor@ and @-XDeriveFoldable@, to be
+implemented as a library on top of Template Haskell.
 
 \subsection{Template Haskell for building Embedded Domain specific
   Languages (EDSLs)}
 
-To embed a domain specific language with Template Haskell, a
-\textit{quasi quoter} has to be specified. Formally, a quasi quoter is
-a value of type @QuasiQuoter@ defined as follows:
+To see Template Haskell's potential for building an EDSL, consider the
+problem of pattern matching text with regular expressions. Suppose, as
+part of a Haskell program we need to devise many different regular
+expressions and use them to pattern match text fragments. Regular
+expressions are easily defined by an algebraic datatype capturing
+their structure, as well as an evaluator checking whether a regular
+expression matches some input string\footnote{This example draws on
+  Penn's CIS 552 \textit{Advanced Programming} course, specifically
+  Homework \#5:
+  http://www.seas.upenn.edu/~cis552/current/hw/hw05/Main.html}:
 
-> data QuasiQuoter = QuasiQuoter {
->   quoteExp  :: String -> Q Exp,
->   quotePat  :: String -> Q Pat,
->   quoteType :: String -> Q Type,
->   quoteDec  :: String -> Q Dec
-> }
+> data RegExp
+>   = Char (Set Char)          -- [a], [a-z]; matches a single input character in a given range
+>   | Alt RegExp RegExp        -- r1 || r2 (alternation); matches either r1 or r2
+>   | Seq RegExp RegExp        -- r1 r2 (concatenation); matches r1 followed by r2
+>   | Star RegExp              -- r* (Kleene star); matches r zero or more times
+>   | Empty                    -- \(\epsilon\); matches only the empty string
+>   | Void                     -- \(\emptyset\); matches nothing (always fails)
+>   | Var String               -- a variable holding another regexp (explained later)
+>   deriving Show
 
-A quasi quoter thus consists of four parsers which parse strings into
-abstract Haskell syntax. Its purpose is to parse the embedded domain
-specific language and to convert it into corresponding Haskell
-syntax. Having defined a quasi quoter, say |qq|, it can be invoked by
-writing |[qq|| .. ||]|. Anything inside the quasi quote is treated as
-part of the embedded domain specific language.
+> match :: RegExp -> String -> Bool
+> match r s = nullable (foldl deriv r s)
 
-As a first example for embedding a different language into a Haskell
-program, suppose we want to build a simple web application in
-Haskell. The web application's business logic sits hereby on top of a
-Haskell webserver which receives and answers client requests: A
-client's incoming page request is used to lookup the page contents in
-a database. The page contents are then used to populate an HTML
-template which is the same accross all of the web application's web
-pages.
+The evaluator |match| is hereby based on the concepts of
+derivatives~\cite{regexps-derivs}: an initial regular expression |r|
+matches an input string |s|, if |r| matches the first character of |s|
+and its derivative regular expression |(deriv r)| matches the remainder
+of |s|:
 
-Using Template Haskell and its quasiquotes feature, we can embed the
-HTML template natively into our web application. 
+> nullable :: RegExp -> Bool
+> nullable (Char _)    = False
+> nullable (Alt r1 r2) = nullable r1 || nullable r2
+> nullable (Seq r1 r2) = nullable r1 && nullable r2
+> nullable (Star _)    = True
+> nullable Empty       = True
+> nullable Void        = False
+> nullable (Var _)     = False
+>
+> deriv :: RegExp -> Char -> RegExp
+> deriv (Char cs) c
+>   | c `Set.member` cs = Empty
+>   | otherwise         = Void
+> deriv (Alt r1 r2) c   = Alt (deriv r1 c) (deriv r2 c)
+> deriv (Seq r1 r2) c
+>   | nullable r1       = Alt (Seq (deriv r1 c) r2) (deriv r2 c)
+>   | otherwise         = Seq (deriv r1 c) r2
+> deriv (Star r) c      = deriv (Alt Empty (Seq r (Star r))) c
+> deriv Empty _         = Void
+> deriv Void _          = Void
+> deriv (Var _) _       = Void
 
+The @RegExp@ datatype and the |match| function solve the initially
+posed problem of providing regular expressions in Haskell. However,
+specifying regular expressions in abstract syntax is tedious and
+unintuitive. For example, consider defining a regular expression for
+checking the wellformedness of email addresses that end in the
+top-level domain @.com@. In its usual concrete syntax, such a regular
+expression is easily conceived as
+@([a-z]|[0-9])*@@([a-z]|[0-9])*.com@, but writing it using the
+@RegExp@ dataype is terribly verbose and unintuitive:
+
+> validDotComMail :: RegExp
+> validDotComMail = Seq
+>   (Star
+>     (Alt (Char (fromList "abcdefghijklmnopqrstuvwxyz"))
+>          (Char (fromList "0123456789"))))
+>   (Seq (Char (fromList "@"))
+>     (Seq (Star
+>       (Alt (Char (fromList "abcdefghijklmnopqrstuvwxyz"))
+>            (Char (fromList "0123456789"))))
+>     (Seq (Char (fromList "."))
+>     (Seq (Char (fromList "c"))
+>     (Seq (Char (fromList "o"))
+>          (Char (fromList "m")))))))
+
+Hence, we would like to embed the concrete surface language of regular
+expressions inside of the Haskell host language. Template Haskell lets
+us do this using quasi quotes and the @QuasiQuotes@ extension. Quasi quotes
+let us define a @QuasiQuoter@ to compile a regular expression's
+concrete syntax into the above @RegExp@ datatype at compile
+time.
+
+> regex :: QuasiQuoter
+> regex = QuasiQuoter {
+>     quoteExp = unTypeQ . compile
+>   , quotePat  = notHandled "patterns"
+>   , quoteType = notHandled "types"
+>   , quoteDec  = notHandled "declarations"
+>   } where notHandled things =
+>             error $ things ++ " are not handled by the regex quasiquoter."
+
+> alph
+
+
+A quasi quoter simply consists of four parsers to parse a raw string
+into corresponding abstract Haskell syntax.
 
 \section{Template Haskell's Implementation in GHC}
 
@@ -624,3 +690,35 @@ syntax (much less involved than what's offered by GHC's @HsSyn@).
 \bibliography{refs}
 
 \end{document}
+
+%% old cruft:
+
+%% To embed a domain specific language with Template Haskell, a
+%% \textit{quasi quoter} has to be specified. Formally, a quasi quoter is
+%% a value of type @QuasiQuoter@ defined as follows:
+
+%% > data QuasiQuoter = QuasiQuoter {
+%% >   quoteExp  :: String -> Q Exp,
+%% >   quotePat  :: String -> Q Pat,
+%% >   quoteType :: String -> Q Type,
+%% >   quoteDec  :: String -> Q Dec
+%% > }
+
+%% A quasi quoter thus consists of four parsers which parse strings into
+%% abstract Haskell syntax. Its purpose is to parse the embedded domain
+%% specific language and to convert it into corresponding Haskell
+%% syntax. Having defined a quasi quoter, say |qq|, it can be invoked by
+%% writing |[qq|| .. ||]|. Anything inside the quasi quote is treated as
+%% part of the embedded domain specific language.
+
+%% As a first example for embedding a different language into a Haskell
+%% program, suppose we want to build a simple web application in
+%% Haskell. The web application's business logic sits hereby on top of a
+%% Haskell webserver which receives and answers client requests: A
+%% client's incoming page request is used to lookup the page contents in
+%% a database. The page contents are then used to populate an HTML
+%% template which is the same accross all of the web application's web
+%% pages.
+
+%% Using Template Haskell and its quasiquotes feature, we can embed the
+HTML template natively into our web application. 
