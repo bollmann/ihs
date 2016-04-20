@@ -811,19 +811,87 @@ value. This example shows how Template Haskell and quasi quotes can be
 used to define a type-safe, domain specific language for regular
 expressions.
 
-In much the same manner, Template Haskell and quasi quotes are used at
-the core of Michael Snoyman's \texttt{shakespeare}
-library~\cite{shakespeare,shakespeare-lib}. It provides embedded
-domain specific templating languages for working with the internet's
-web languages from within a Haskell web application. Concretely, it
-defines the template languages \texttt{Hamlet}, \texttt{Cassius}, and
-\texttt{Julius} for creating HTML, CSS, and JavaScript code,
-respectively. All three web languages can be embedded inside of a
-Haskell application via quasi quotes. For example, to output a simple
-webpage template inside of a Haskell program, it suffices to write:
+In much the same manner, Template Haskell and quasi quotes are used in
+Michael Snoyman's \texttt{shakespeare}
+library~\cite{shakespeare,shakespeare-lib}. It defines embedded
+templating languages for working with the internet's web languages
+from within a Haskell web application. In particular, the
+\texttt{shakespeare} library provides the template languages
+\texttt{Hamlet}, \texttt{Cassius}, and \texttt{Julius} for writing
+embedded HTML, CSS, and Javascript code, respectively. All three
+templating languages internally work quite similarly to the previous
+example's EDSL for regular expressions: quasi quotes allow one to
+write HTML, CSS, or JavaScript code in concrete (though slightly
+modified) syntax inside of Haskell. Moreover, identifiers from the
+Haskell host language as well as code fragments can be interpolated
+into the template languages at compile-time. In the remainder we will
+show-case just the \texttt{shakespeare} library's templating language
+\texttt{Hamlet} for creating HTML documents; the other templating
+languages \texttt{Cassius} and \texttt{Julius} are similar.
 
-> webpageTemplate = [hamlet|
-> 
+To create and output a basic webpage from inside a Haskell
+application, the following is enough:
+
+> import Data.Text
+> import Text.Hamlet
+> import Text.Blaze.Html.Renderer.String
+>
+> data Page = Home | About | Github
+>
+> mkUrls :: Page -> [(Text, Text)] -> Text
+> mkUrls Home   _ = "/home.html"
+> mkUrls About  _ = "/about.html"
+> mkUrls Github _ = "https://www.github.com/bollmann"
+>
+> webPage :: Text -> Text -> HtmlUrl Page
+> webPage title content = [hamlet|
+>   <html>
+>     <head>
+>       <title>#{Text.toUpper title}
+>     <body>
+>       <h1>#{title}
+>       <div>Welcome to my Shakespearean Templates page!
+>       <hr>
+>       <div>Links:
+>         <ul>
+>           <a href=@{Home}>My Homepage
+>           <a href=@{About}>About me
+>           <a href=@{Github}>Check out my Github
+>       <hr>
+>       <div>#{content}
+>  |]
+>
+> main = putStrLn $ renderHtml $
+>   webPage "Hello Shakespeare!" "Hello World!" mkUrls
+
+Running this Haskell program, outputs an HTML page as specified by the
+\texttt{Hamlet} templating language that is embedded through quasi
+quote |[hamlet|| .. ||]| in function |webPage|. \texttt{Hamlet}
+closely resembles real HTML syntax, but is even more terse: instead of
+a closing HTML tag, \texttt{Hamlet} uses indentation to indicate the
+span of the tag. Furthermore, \texttt{Hamlet} allows to interpolate
+code or identifiers from the Haskell host language when creating an
+HTML template. Interpolation of Haskell code into \texttt{Hamlet} is
+done by writing |#{ .. }|. In the above example, the HTML page's title
+and content are interpolated from Haskell identifiers. Note
+particularly how in the webpage's title we uppercase the interpolated
+title using Haskell's |Text.toUpper| function.
+
+In addition to this standard interpolation, \texttt{Hamlet} can also
+interpolate links by writing |@{..}|. These links are specified as
+values of the |Page| datatype inside the template and the |mkUrls|
+render function translates them to real URLs later. \texttt{Hamlet}'s
+URL interpolation has commonly be phrased as creating ``type-safe
+URLs''. One reason is that, just like with normal variable
+interpolation, all interpolated links have to exist at compile-time
+and there is only one distinct place in the code where a link's
+definition needs to be updated. However, the main reason for calling
+\texttt{Hamlet}'s URLs type-safe is in interplay with the web
+framework Yesod. 
+
+Finally, \texttt{Hamlet} allows to use a few control flow constructs
+like if conditionals, for loop, and let bindings to embed basic
+business logic into a webpage's template.
 
 \section{Template Haskell's Implementation in GHC}
 
