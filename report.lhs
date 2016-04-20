@@ -1,10 +1,11 @@
 \documentclass{article}
-%include polycode.fmt
+%include lhs2TeX.fmt
 %options -fglasgow-exts
 %format tick = "\,\,\textquotesingle"
 %format ticktick = "\,\,\textquotesingle\textquotesingle"
 
 \usepackage{todonotes}
+\usepackage{paralist}
 \usepackage[top=2cm,left=4cm,right=4cm,bottom=2cm]{geometry}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
@@ -478,9 +479,7 @@ value of type @T a@ must be preserved when transforming it to the
 output value of type @T b@.
 
 The idea of this algorithm is implemented by meta function
-|deriveFunctor :: Name -> Q [Dec]| below. Given the name of a type
-constructor (e.g. @Result@, @List@, etc.), it derives the code for
-this type constructor's @Functor@ instance.
+|deriveFunctor :: Name -> Q [Dec]| below.
 
 > data Deriving = Deriving { tyCon :: Name, tyVar :: Name }
 >
@@ -532,8 +531,11 @@ this type constructor's @Functor@ instance.
 > leftmost (AppT ty1 _) = leftmost ty1
 > leftmost ty           = ty
 
-For example, running the splice |$(deriveFunctor ``Tree)| generates the
-following code:
+
+Given the name of a type constructor (e.g. @Result@, @List@, etc.),
+|deriveFunctor| derives the code for this type constructor's @Functor@
+instance.  For example, running the splice |$(deriveFunctor ``Tree)|
+generates the following code:
 
 > instance Functor Tree where
 >   fmap f (Leaf x)     = Leaf (f x)
@@ -580,27 +582,27 @@ expressions are easily defined by an algebraic datatype capturing
 their structure, as well as an evaluator checking whether a regular
 expression matches some input string\footnote{This example draws on
   Penn's CIS 552 \textit{Advanced Programming} course, specifically
-  Homework \#5:
+  Assignment 5:
   http://www.seas.upenn.edu/~cis552/current/hw/hw05/Main.html}:
 
 > data RegExp
->   = Char (Set Char)          -- [a], [a-z]; matches a single input character in a given range
->   | Alt RegExp RegExp        -- r1 || r2 (alternation); matches either r1 or r2
->   | Seq RegExp RegExp        -- r1 r2 (concatenation); matches r1 followed by r2
->   | Star RegExp              -- r* (Kleene star); matches r zero or more times
->   | Empty                    -- \(\epsilon\); matches only the empty string
->   | Void                     -- \(\emptyset\); matches nothing (always fails)
->   | Var String               -- a variable holding another regexp (explained later)
+>   = Char (Set Char)    -- [a], [abc], [a-z]; matches a single character from the class
+>   | Alt RegExp RegExp  -- r1 | r2 (alternation); matches either r1 or r2
+>   | Seq RegExp RegExp  -- r1 r2 (concatenation); matches r1 followed by r2
+>   | Star RegExp        -- r* (Kleene star); matches r zero or more times
+>   | Empty              -- matches only the empty string
+>   | Void               -- matches nothing (always fails)
+>   | Var String         -- a variable holding another regexp (explained later)
 >   deriving Show
 
 > match :: RegExp -> String -> Bool
 > match r s = nullable (foldl deriv r s)
 
-The evaluator |match| is hereby based on the concepts of
+The evaluator |match| is hereby based on the concept of
 derivatives~\cite{regexps-derivs}: an initial regular expression |r|
 matches an input string |s|, if |r| matches the first character of |s|
-and its derivative regular expression |(deriv r)| matches the remainder
-of |s|:
+and its derivative regular expression |(deriv r)| matches the
+remainder of |s|:
 
 > nullable :: RegExp -> Bool
 > nullable (Char _)    = False
@@ -626,49 +628,202 @@ of |s|:
 
 The @RegExp@ datatype and the |match| function solve the initially
 posed problem of providing regular expressions in Haskell. However,
-specifying regular expressions in abstract syntax is tedious and
-unintuitive. For example, consider defining a regular expression for
-checking the wellformedness of email addresses that end in the
-top-level domain @.com@. In its usual concrete syntax, such a regular
-expression is easily conceived as
-@([a-z]|[0-9])*@@([a-z]|[0-9])*.com@, but writing it using the
-@RegExp@ dataype is terribly verbose and unintuitive:
+specifying regular expressions in abstract syntax is extremely
+tedious. For example, consider defining a regular expression for
+checking the wellformedness of email addresses ending with the top
+level domain \texttt{.com}. In its usual concrete syntax, such a
+regular expression is easily defined as
+@([a-z]|[0-9])*@@([a-z]|[0-9])*.com@, but writing it in terms of the
+@RegExp@ dataype is verbose and unintuitive. Moreover, parsing
+functions like
+\begin{itemize}
+\item |compile  :: String -> RegExp|, or
+\item |compile' :: String -> Either CompileError RegExp|
+\end{itemize}
+do not resolve the problem of working with regular expressions in
+concrete syntax. Due to ``compiling'' regular expressions at run time,
+they don't provide any compile time type safety guarantees that the
+input raw expression is wellformed, thus leading to either run time
+exceptions or tedious handling for compiled expressions.
 
-> validDotComMail :: RegExp
-> validDotComMail = Seq
->   (Star
->     (Alt (Char (fromList "abcdefghijklmnopqrstuvwxyz"))
->          (Char (fromList "0123456789"))))
->   (Seq (Char (fromList "@"))
->     (Seq (Star
->       (Alt (Char (fromList "abcdefghijklmnopqrstuvwxyz"))
->            (Char (fromList "0123456789"))))
->     (Seq (Char (fromList "."))
->     (Seq (Char (fromList "c"))
->     (Seq (Char (fromList "o"))
->          (Char (fromList "m")))))))
+To preserve type safety and yet to be able to use regular expressions
+conveniently, we want to embed the concrete regular expression syntax
+into the Haskell host language. This can be done via Template
+Haskell's quasi quotes and the @QuasiQuotes@ extension. It allows
+defining \textit{quasi quotes} for regular expressions, denoted
+|[regex|| .. ||]|, where anything inside the quasi quote is considered
+part of an embedded regular expression language. Using quasi quotes,
+we can then specify the regex for email addresses from above naturally
+as follows:
 
-Hence, we would like to embed the concrete surface language of regular
-expressions inside of the Haskell host language. Template Haskell lets
-us do this using quasi quotes and the @QuasiQuotes@ extension. Quasi quotes
-let us define a @QuasiQuoter@ to compile a regular expression's
-concrete syntax into the above @RegExp@ datatype at compile
-time.
+> alphaNum, validDotComMail :: RegExp
+> alphaNum        = [regex|[a-z]|[0-9]|]
+> validDotComMail = [regex|${alphaNum}*@${alphaNum}*.com|]
+
+Note how we can even compose regular expressions easily from smaller
+building blocks. Writing |${alphaNum}| interpolates the regex referred
+to by |alphaNum| into the larger |validDotComMail| regex. In essence,
+this means that we can define our own notion of splicing values from
+the Haskell meta language into the embedded object language of regular
+expressions. We can go further and even allow to run Haskell code when
+interpolating with @${..}@. For example, refining our wellformedness
+check for ``\texttt{.com}'' mail addresses, we might want to ensure at
+least one character to occur on either side of the ``@@'' symbol:
+
+> chars', validDotComMail' :: RegExp
+> chars'           = [regex|[a-z]|[A-Z]|[0-9]|[-_.]|]
+> validDotComMail' = [regex|${plus chars'}@${plus chars'}.com|]
+>
+> plus :: RegExp -> RegExp
+> plus r = Seq r (Star r)
+
+Here, |plus| corresponds to the usual regex combinator that requires a
+given regex to occur at least once. Note how |plus| is defined as a
+regular Haskell function and then used \textit{inside} of the embedded
+regex language to build the regular expression for |validDotComMail'|.
+
+Intuitively, a quasi quote like |[regex|| .. ||]| converts an embedded
+language's concrete syntax to Haskell code at compile time. It is
+defined by a \textit{quasi quoter}, which is a parser for the embedded
+language. The quasi quoter's task is to parse the embedded language's
+syntax into a corresponding Template Haskell expression and then to
+splice this expression as real Haskell code in place of the quasi
+quote. The conversion of embedded language code to corresponding
+Haskell code hereby happens before typechecking the Haskell
+module. Hence, trying to splice in malformed embedded language
+fragments will raise a Haskell type error at compile time.
+
+The quasi quoter @regex@ for our embedded language of regular
+expressions can be defined as follows:
+
+\todo{explain TExp, unTypeQ, [e|| .. ||] or get rid of typed
+  expression quotes and splices!}
 
 > regex :: QuasiQuoter
 > regex = QuasiQuoter {
->     quoteExp = unTypeQ . compile
+>     quoteExp  = unTypeQ . compile
 >   , quotePat  = notHandled "patterns"
 >   , quoteType = notHandled "types"
 >   , quoteDec  = notHandled "declarations"
->   } where notHandled things =
->             error $ things ++ " are not handled by the regex quasiquoter."
+>   }
+>   where notHandled things = error $
+>           things ++ " are not handled by the regex quasiquoter."
+>
+> compile :: String -> Q (TExp RegExp)
+> compile s =
+>   case P.parse regexParser "" s of
+>     Left  err    -> fail (show err)
+>     Right regexp -> [e|| regexp ||]
 
-> alph
+That is, formally a @QuasiQuoter@ consists of four parsers,
 
+> quoteExp  :: String -> Q Exp
+> quotePat  :: String -> Q Pat
+> quoteType :: String -> Q Type
+> quoteDec  :: String -> Q Dec
 
-A quasi quoter simply consists of four parsers to parse a raw string
-into corresponding abstract Haskell syntax.
+to parse raw strings of the embedded language into the different
+categories of Haskell syntax. In this example, however, we only want
+to splice embedded regular expressions into the context of Haskell
+expressions, so we only define the @quoteExp@ parser in the @regex@
+quasi quoter. This parser compiles an embedded regular expression
+given as a string into a corresponding Template Haskell expression.
+
+Compilation by the |compile| function proceeds in two stages: First,
+we parse the input string regex into a corresponding @RegExp@
+value. Second, we encode this @RegExp@ value as a Haskell expression
+in Template Haskell's @Exp@ datatype. It is the second step that
+allows us to interpolate variables (or even code) from the Haskell
+host language into the EDSL for regular expressions.
+
+%% The second step seems redundant at first: Why should the @RegExp@
+%% value be encoded as a Template Haskell object program in the first
+%% place when it is spliced in as a @RegExp@ value again afterwards due
+%% to a quasi quote |[regex|| .. ||]|? However, encoding a @RegExp@ as a
+%% Template Haskell object program allows accessing the Template Haskell
+%% functionality when constructing object programs. It enables us (e.g.)
+%% to interpolate values (or even code) from the Haskell host language
+%% when processing the EDSL of regular expressions.
+
+Parsing a raw regular expression into a corresponding @RegExp@ value
+is a routine task using (e.g.) the \texttt{parsec} library:
+
+> regexParser :: P.Parsec String () RegExp
+> regexParser = P.try alts <|> (P.eof *> pure Empty)
+>   where
+>     atom       = P.try var <|> char
+>     var        = Var <$> (P.string "${" *> some (P.noneOf "}") <* P.char '}')
+>     char       = P.try charclass <|> singlechar
+>     singlechar = (Char . Set.singleton) <$> P.noneOf specials
+>     charclass  = fmap (Char . Set.fromList) $ P.char '[' *> content <* P.char ']'
+>     content    = (concat <$> P.manyTill range (P.lookAhead (P.char ']')))
+>                    <|> some (P.noneOf specials)
+>     range      = enumFromTo <$> (P.anyChar <* P.char '-') <*> P.anyChar
+>     alts       = P.try (Alt <$> seqs <*> (P.char '|' *> alts)) <|> seqs
+>     seqs       = P.try (Seq <$> star <*> seqs) <|> star
+>     star       = P.try (Star <$> (atom <* P.char '*'))
+>                    <|> P.try (Star <$> (P.char '(' *> alts <* P.string ")*"))
+>                    <|> atom
+>     specials   = "[]()*|"
+
+To represent regular expressions of type @RegExp@ as Haskell
+expressions of type @Q Exp@, Template Haskell's @Lift@ typeclass is
+used. Its method @lift :: Lift a => a -> Q Exp@ lifts values from the
+Haskell meta language (i.e., a @RegExp@ value) into Template Haskell's
+object language (i.e., a value of the @Q Exp@ datatype). The |lift|
+function is used implicitly by the quote |[e|||| regexp ||||]| in
+function |compile| to represent a @RegExp@ value as a Template Haskell
+expression.
+
+Most of the lifting is a direct encoding of the syntactic structure of
+the @RegExp@ value; the only interesting case is when lifting the
+regular expression variable |Var vars|. In this case, we treat the
+words in the string |vars| as referring to identifiers from the
+Haskell host language, which we apply in a left associative manner to
+each other. Doing this enables interpolation of Haskell identifiers or
+even simple forms of Haskell expressions into our EDSL of regular
+expressions as shown by the regexes |validDotComMail| and
+|validDotComMail'|, respectively.
+
+> instance Lift a => Lift (Set a) where
+>   lift set = appE (varE `Set.fromList) (lift (Set.toList set))
+>
+> instance Lift RegExp where
+>   -- lift :: RegExp -> Q Exp
+>   lift (Char cs)     = apply `Char  [lift cs]
+>   lift (Alt r1 r2)   = apply `Alt   (map lift [r1, r2])
+>   lift (Seq r1 r2)   = apply `Seq   (map lift [r1, r2])
+>   lift (Star r1)     = apply `Star  (map lift [r1])
+>   lift Empty         = apply `Empty []
+>   lift Void          = apply `Void  []
+>   lift (Var vars)    = foldl1 appE $ map (varE . mkName) (words vars)
+>
+> apply :: Name -> [Q Exp] -> Q Exp
+> apply n = foldl appE (conE n)
+
+These two steps constitute the conversion of raw string regular
+expressions into Template Haskell expressions inside of the |compile|
+function and define the @regex@ quasiquoter. Whenever we write a quasi
+quote like |[regex|| .. ||]| instead of a Haskell expression,
+|regex|'s parser |quoteExp| converts the regex EDSL into Template
+Haskell object code and splices in the result as a wellformed @RegExp@
+value. This example shows how Template Haskell and quasi quotes can be
+used to define a type-safe, domain specific language for regular
+expressions.
+
+In much the same manner, Template Haskell and quasi quotes are used at
+the core of Michael Snoyman's \texttt{shakespeare}
+library~\cite{shakespeare,shakespeare-lib}. It provides embedded
+domain specific templating languages for working with the internet's
+web languages from within a Haskell web application. Concretely, it
+defines the template languages \texttt{Hamlet}, \texttt{Cassius}, and
+\texttt{Julius} for creating HTML, CSS, and JavaScript code,
+respectively. All three web languages can be embedded inside of a
+Haskell application via quasi quotes. For example, to output a simple
+webpage template inside of a Haskell program, it suffices to write:
+
+> webpageTemplate = [hamlet|
+> 
 
 \section{Template Haskell's Implementation in GHC}
 
@@ -695,7 +850,7 @@ syntax (much less involved than what's offered by GHC's @HsSyn@).
 
 %% To embed a domain specific language with Template Haskell, a
 %% \textit{quasi quoter} has to be specified. Formally, a quasi quoter is
-%% a value of type @QuasiQuoter@ defined as follows:
+%% a value of type QuasiQuoter defined as follows:
 
 %% > data QuasiQuoter = QuasiQuoter {
 %% >   quoteExp  :: String -> Q Exp,
@@ -721,4 +876,4 @@ syntax (much less involved than what's offered by GHC's @HsSyn@).
 %% pages.
 
 %% Using Template Haskell and its quasiquotes feature, we can embed the
-HTML template natively into our web application. 
+%%HTML template natively into our web application.
