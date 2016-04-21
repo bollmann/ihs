@@ -825,11 +825,11 @@ write HTML, CSS, or JavaScript code in concrete (though slightly
 modified) syntax inside of Haskell. Moreover, identifiers from the
 Haskell host language as well as code fragments can be interpolated
 into the template languages at compile-time. In the remainder we will
-show-case just the \texttt{shakespeare} library's templating language
-\texttt{Hamlet} for creating HTML documents; the other templating
-languages \texttt{Cassius} and \texttt{Julius} are similar.
+briefly show-case the \texttt{shakespeare} library's templating
+language \texttt{Hamlet} for creating HTML documents; the other
+templating languages \texttt{Cassius} and \texttt{Julius} are similar.
 
-To create and output a basic webpage from inside a Haskell
+To create and output a simple web page from inside a Haskell
 application, the following is enough:
 
 > import Data.Text
@@ -865,17 +865,18 @@ application, the following is enough:
 >   webPage "Hello Shakespeare!" "Hello World!" mkUrls
 
 Running this Haskell program, outputs an HTML page as specified by the
-\texttt{Hamlet} templating language that is embedded through quasi
-quote |[hamlet|| .. ||]| in function |webPage|. \texttt{Hamlet}
-closely resembles real HTML syntax, but is even more terse: instead of
-a closing HTML tag, \texttt{Hamlet} uses indentation to indicate the
+\texttt{Hamlet} templating language, embedded through quasi quote
+|[hamlet|| .. ||]| in function |webPage|. \texttt{Hamlet} closely
+resembles real HTML syntax, but is even more terse: instead of a
+closing HTML tag, \texttt{Hamlet} uses indentation to indicate the
 span of the tag. Furthermore, \texttt{Hamlet} allows to interpolate
 code or identifiers from the Haskell host language when creating an
 HTML template. Interpolation of Haskell code into \texttt{Hamlet} is
 done by writing |#{ .. }|. In the above example, the HTML page's title
 and content are interpolated from Haskell identifiers. Note
 particularly how in the webpage's title we uppercase the interpolated
-title using Haskell's |Text.toUpper| function.
+title using Haskell's |Text.toUpper| function \textit{inside} of the
+\texttt{Hamlet} language.
 
 In addition to this standard interpolation, \texttt{Hamlet} can also
 interpolate links by writing |@{..}|. These links are specified as
@@ -883,15 +884,48 @@ values of the |Page| datatype inside the template and the |mkUrls|
 render function translates them to real URLs later. \texttt{Hamlet}'s
 URL interpolation has commonly be phrased as creating ``type-safe
 URLs''. One reason is that, just like with normal variable
-interpolation, all interpolated links have to exist at compile-time
-and there is only one distinct place in the code where a link's
-definition needs to be updated. However, the main reason for calling
-\texttt{Hamlet}'s URLs type-safe is in interplay with the web
-framework Yesod. 
+interpolation, all interpolated links have to exist and be type
+correct at compile-time. Furthermore, there is only one distinct place
+in the code where a link's raw URL needs to be maintained or
+updated. Hence, as soon as a link's constructor value is changed, the
+compiler statically forces us to update all references to this link as
+well.
+
+For example, suppose we want to add more external links to our web
+page. We could model this fact by changing the |Page| data type to
+
+> data Page = Home | About | External ExternalPage
+> data ExternalPage = Github | Haskell | Reddit
+
+and, moreover, changing the |mkUrls| renderer function to account for
+the new links:
+
+< mkUrls :: Page -> [(Text, Text)] -> Text
+< mkUrls Home            _ = "/home.html"
+< mkUrls About           _ = "/about.html"
+< mkUrls (External page) _ = mkExternalUrls page
+<
+< mkExternalUrls :: ExternalPage -> Text
+< mkExternalUrls Github  = "https://www.github.com"
+< mkExternalUrls Haskell = "http://www.haskell.org"
+< mkExternalUrls Reddit  = "http://www.reddit.com/r/haskell"
+
+Doing just these changes, will then cause a compile-time error in our
+|webPage| template, since we haven't updated the |Github| reference to
+our newly adjusted link structure. Hence, the compiler reminds (and in
+fact forces) us to update all locations in the code that used the old
+|Github| link to now use the new |External Github| (as well as
+optionally the |External Haskell|, etc.) links.
+
+However, the main reason for calling \texttt{Hamlet}'s URLs type-safe
+is in interplay with the web framework Yesod. \todo{shall we mention
+  this (and in this case elaborate it with two more sentences)??}
 
 Finally, \texttt{Hamlet} allows to use a few control flow constructs
-like if conditionals, for loop, and let bindings to embed basic
-business logic into a webpage's template.
+like if conditionals, for loops, and let bindings to embed basic
+business logic into a webpage's template. See \cite{shakespeare,yesod}
+for a gentle (and much more in-depth) introduction to shakespearean
+templates.
 
 \section{Template Haskell's Implementation in GHC}
 
