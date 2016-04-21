@@ -885,11 +885,11 @@ render function translates them to real URLs later. \texttt{Hamlet}'s
 URL interpolation has commonly be phrased as creating ``type-safe
 URLs''. One reason is that, just like with normal variable
 interpolation, all interpolated links have to exist and be type
-correct at compile-time. Furthermore, there is only one distinct place
-in the code where a link's raw URL needs to be maintained or
-updated. Hence, as soon as a link's constructor value is changed, the
-compiler statically forces us to update all references to this link as
-well.
+correct at compile-time. Hence, as soon as a link's constructor shape
+is changed, the compiler statically forces us to update all references
+to this link as well. Furthermore, there is only one distinct place in
+the code to maintain or update a link's raw URL, thus minimizing the
+risk of dead URLs.
 
 For example, suppose we want to add more external links to our web
 page. We could model this fact by changing the |Page| data type to
