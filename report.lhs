@@ -748,6 +748,9 @@ host language into the EDSL for regular expressions.
 Parsing a raw regular expression into a corresponding @RegExp@ value
 is a routine task using (e.g.) the \texttt{parsec} library:
 
+\todo{fix this parser! Parsing multiple ranges (e.g. [a-zA-Z0-9])
+  breaks parsing afterwards ?!?}
+
 > regexParser :: P.Parsec String () RegExp
 > regexParser = P.try alts <|> (P.eof *> pure Empty)
 >   where
@@ -921,61 +924,174 @@ However, the main reason for calling \texttt{Hamlet}'s URLs type-safe
 is in interplay with the web framework Yesod. \todo{shall we mention
   this (and in this case elaborate it with two more sentences)??}
 
-Finally, \texttt{Hamlet} allows to use a few control flow constructs
-like if conditionals, for loops, and let bindings to embed basic
-business logic into a webpage's template. See \cite{shakespeare,yesod}
-for a gentle (and much more in-depth) introduction to shakespearean
+Finally, \texttt{Hamlet} allows to use some control constructs like if
+conditionals, for loops, and let bindings to embed basic business
+logic into a webpage's template. See \cite{shakespeare,yesod} for a
+gentle (and much more in-depth) introduction to shakespearean
 templates.
 
 \section{Template Haskell's Implementation in GHC}
 
-* @Language.Haskell.TH@ API (TH.hs, TH/Syntax.hs, TH/Lib.hs,
-TH/Ppr.hs)
+The Template Haskell functionality described in the previous section
+is implemented by a public Haskell library as well as a language
+extension to GHC. The Template Haskell library, called
+\texttt{template-haskell}, defines the user-facing API as described in
+the previous section. It provides the main module
+@Language.Haskell.TH@, which is based on sub modules
+@Language.Haskell.TH.{Syntax, Lib, Ppr, Quote}@, respectively.
 
-* Offers a small, yet complete AST of Haskell's concrete surface
-syntax (much less involved than what's offered by GHC's @HsSyn@).
+Module @Language.Haskell.TH.Syntax@ (mainly) defines the algebraic
+data types, the quotation monad @Q@\footnote{The @Q@ monad is
+  essentially a wrapper on top of GHC's internal typechecker monad
+  @TcM@. This is accomplished without depending on GHC by using a
+  @Quasi@ typeclass for indirection. The trick is described in
+  \cite{th2}, \S 10 ``Functoring the Q monad''.}, and the @Lift@
+typeclass for representing Haskell programs as data; module
+@Language.Haskell.TH.Lib@ defines the corresponding syntax
+construction functions. Furthermore, module @Language.Haskell.TH.Ppr@
+provides a pretty printer for displaying Template Haskell object
+programs in concrete syntax. Finally, module
+@Language.Haskell.TH.Quote@ defines the quasi quoter datatype for
+embedding domain specific languages.
 
-* Convert.hs:
-* DsMeta.hs:
-* TcSplice.hs:
+Inside GHC, Template Haskell is implemented by the
+\texttt{TemplateHaskell} language extension. This extension's main
+purpose is (a) to run meta programs at compile-time through splice
+operator |$(..)|; (b) to represent Haskell code as data by enclosing
+it in quotation brackets |[|| .. ||]|; and (c) to provide an interface
+for reification. The GHC extension is essentially implemented by
+modules \texttt{rename/rnSplice.hs}, \texttt{typecheck/TcSplice.hs},
+\texttt{deSugar/DsMeta.hs}, and \texttt{hsSyn/Convert.hs},
+respectively. Each such GHC module is exercised at a different stage
+during the compilation of a Haskell program that uses Template
+Haskell's meta programming facilities.
 
-\section{Adding Pattern Synonym Support to Template Haskell}
+%% In the following, the implementation of each of the three features is
+%% described from a high-level perspective. A basic knowledge of GHC's
+%% overall architecture is assumed. Simon Marlow and Simon Peyton Jones
+%% provide an excellent overview of GHC in ``The Glasgow Haskell
+%% Compiler'' in~\cite{aosa}.
+
+In the following, we briefly highlight how the above features (a) to
+(c) fall into the big picture of GHC's multi-step compilation process
+of a module @M@. Simon Marlow and Simon Peyton Jones provide an
+excellent general and more thorough overview of GHC in ``The Glasgow
+Haskell Compiler'' in~\cite{aosa}.
+
+To compile a Haskell module @M@ that uses the @TemplateHaskell@
+extension, GHC first lexes and parses @M@'s Haskell surface syntax
+into abstract Haskell syntax. Next, GHC's renamer processes @M@'s
+abstract syntax, resolving the scopes of the module's identifiers and
+connecting them to their binding sites. As part of renaming, meta
+programs are evaluated (feature (a)): all top-level splices occurring
+in the Haskell module @M@ are executed and their results spliced in
+place of them. In particular, when the renamer comes across a splice
+|$(exp)|, it triggers a subcompilation process of just expression
+|exp|. This subcompilation first typechecks |exp| to ensure that it
+has type @Q Exp@ (or @Q [Dec]@, etc.) and thus that it represents a
+valid Template Haskell object program. If typechecking succeds, |exp|
+is then desugared to an equivalent, but simpler core expression, and
+afterwards compiled, linked, and run. Running the compiled
+representation of |exp| consequently yields a monadic value of type @Q
+Exp@ (or @Q [Dec]@, or the like), which is performed via Template
+Haskell's |runQ| function to obtain the generated Template Haskell
+object program. This object program is finally converted into real
+Haskell (abstract) syntax and spliced in place of the original meta
+program |$(exp)|. This concludes the evaluation of meta program
+|exp|. After splicing in this expression's result, the renamer
+continues its renaming process on the spliced in result program as if
+there had never been a splice |$(exp)| at all.
+
+Running Template Haskell splices in the renamer and thus before
+typechecking the enclosing Haskell module gives rise to the so-called
+stage restriction: a splice |$(expr)| may only use imported and thus
+already fully typechecked code. The stage restriction is presumably
+Template Haskell's most annoying limitation as it requires a user to
+separate the definitions of meta programs from their use-sites in
+splices into different modules. However, overcoming the stage
+restriction is difficult to implement. After all, the code inside a
+splice must be successfully typechecked before it can be run. And
+typechecking a splice's code coming from the very module currently
+being renamed would require evaluation of splices to be run during
+typechecking (as in fact was done in the original Template Haskell
+implementation \cite{th1}). However, postponing the evaluation of
+splices to the typechecking phase bears other problems\footnote{see
+  \cite{th3} for the details}, and yet requires a module's non-splicy
+parts to be typechecked before its splicy parts; a tricky procedure
+slowing down the compilation of a Haskell module. Hence, until today
+the stage restriction has persisted in the Glasgow Haskell Compiler.
+
+After renaming module @M@, typechecking happens. It ensures that the
+composition of @M@'s terms is allowed by its types. With regard to
+Template Haskell, the typechecking process is quite simple. As part of
+@M@'s code, Haskell meta programs are checked to indeed construct
+Template Haskell object programs of type @Q Exp@, (or @Q [Dec]@, or
+the like). This ensures that a Haskell meta program in fact builds
+some sort of a Haskell expression (or Haskell declarations,
+etc.). However, it doesn't enforce the type correctness of the
+generated object program itself. This is because object program
+construction in Template Haskell is untyped. All that is known is that
+a constructed object program is of type @Q Exp@ (or @Q [Dec]@, etc.),
+but nothing else; particularly it is not clear whether the generated
+object program's terms are composed in a valid manner. To ensure the
+type-safety of generated object programs, these are type checked after
+being spliced in as Haskell code. In particular, all previously in the
+renamer spliced in object programs are now rechecked from scratch.
+
+Interestingly, the contents of quotation brackets are \textit{not}
+typechecked except for ensuring that embedded splices (i.e.,
+invocations of meta programs) are type-safe. Besides checking that
+embedded splices correctly produce some value of a Template Haskell
+object program, quotation brackets may contain any incorrect code!
+(e.g., |[|| "false" && True ||]| is not rejected.)  The reason is that
+due to sub splices (and particularly splicing in type expressions)
+there are several cases where typechecking cannot be performed without
+actually executing the splice. However, nested splices inside
+quotation brackets are not evaluated until the quotation bracket is
+run as part of a top-level splice's execution. Hence, typechecking
+quotation brackets cannot be done in a generally sensible manner and
+is thus not attempted at all. Note that this does not violate type
+safety in general since object programs are typechecked from scratch
+after having been spliced in as Haskell code.
+
+\todo{briefly mention reification here?}
+
+After GHC's typechecking pass, desugaring of module @M@'s Haskell code
+takes place. The desugaring consists of multiple steps in which the
+elaborate Haskell syntax is simplified into GHC's core language
+\texttt{Core} (i.e., System F\(\omega\) with
+Coercions~\cite{systemfc}). With regard to Template Haskell, splices
+have already been eliminated by running them in the renaming stage;
+furthermore Template Haskell object program constructions of data
+values (of (e.g.) type @Exp@, @[Dec]@, or similar) inside monad @Q@
+are desugared just in the same way as is normal do
+notation. Accordingly, only the desugaring of quotation brackets
+deserves special attention: its quoted Haskell expression is rewritten
+as a \texttt{Core} expression that, when run, produces a Template
+Haskell code fragment equivalent to the quoted Haskell expression. To
+this end, splices like |$(e)| inside a quotation bracket are replaced
+by their splice bodies |e|. Thus, the desugared \texttt{Core}
+expression of a quotation bracket runs its nested splices to yield the
+overall TH object program. Overall, the desugaring achieves
+representing Haskell code as corresponding Template Haskell object
+programs by translating the former into the latter at the level of
+Haskell's Core language.
+
+The desugared Haskell module @M@ is finally fed into one of several
+possible code generators to generate an executable module. This
+concludes the life-cycle of Template Haskell for compile-time meta
+programming during the compilation of a Haskell module @M@.
+
+\todo{
+  * RnSplice.hs
+  * TcSplice.hs
+  * DsMeta.hs
+  * Convert.hs }
+
+\section{Adding Pattern Synonyms Support to Template Haskell}
 
 \section{Conclusion}
 
-\bibliographystyle{alpha}
-\bibliography{refs}
+\bibliographystyle{alpha} \bibliography{refs}
 
 \end{document}
-
-%% old cruft:
-
-%% To embed a domain specific language with Template Haskell, a
-%% \textit{quasi quoter} has to be specified. Formally, a quasi quoter is
-%% a value of type QuasiQuoter defined as follows:
-
-%% > data QuasiQuoter = QuasiQuoter {
-%% >   quoteExp  :: String -> Q Exp,
-%% >   quotePat  :: String -> Q Pat,
-%% >   quoteType :: String -> Q Type,
-%% >   quoteDec  :: String -> Q Dec
-%% > }
-
-%% A quasi quoter thus consists of four parsers which parse strings into
-%% abstract Haskell syntax. Its purpose is to parse the embedded domain
-%% specific language and to convert it into corresponding Haskell
-%% syntax. Having defined a quasi quoter, say |qq|, it can be invoked by
-%% writing |[qq|| .. ||]|. Anything inside the quasi quote is treated as
-%% part of the embedded domain specific language.
-
-%% As a first example for embedding a different language into a Haskell
-%% program, suppose we want to build a simple web application in
-%% Haskell. The web application's business logic sits hereby on top of a
-%% Haskell webserver which receives and answers client requests: A
-%% client's incoming page request is used to lookup the page contents in
-%% a database. The page contents are then used to populate an HTML
-%% template which is the same accross all of the web application's web
-%% pages.
-
-%% Using Template Haskell and its quasiquotes feature, we can embed the
-%%HTML template natively into our web application.
