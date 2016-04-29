@@ -1150,11 +1150,35 @@ second \(\forall b_1 \dots b_m\) refers to the pattern synonym's
 existentially bound type variables and the context \(CProv\) refers to
 their provided constraints.
 
-Due to their unusual type shapes, I had to special-case the
-reification of pattern synonym type signatures as well as their
-conversion from Template Haskell syntax to real Haskell syntax.
+Due to their unusual type shapes, I couldn't as easily reuse already
+existing code for the reification of Haskell types (in
+\texttt{typecheck/TcSplice.hs}) and for converting Template Haskell
+types to their Haskell analogs (in \texttt{hsSyn/Convert.hs}), as I
+had originally thought. Instead I had to special-case the reification
+of pattern synonym type signatures as well as their conversion from
+Template Haskell syntax to real Haskell syntax.
+
+After resolving this problem, a second major issue concerned the
+implementation of record pattern synonyms. Internally in GHC, record
+pattern synonyms are modeled with both names for the record selectors
+and (hidden) names for the pattern synonym's internal (right hand
+side) variables. However, from a user's perspective a record pattern
+synonym defines only its record selector names. Correspondingly,
+Richard Eisenberg wanted to expose this intuitive API inside Template
+Haskell, even though the Haskell AST for record pattern synonym's
+internally adds more structure. To achieve this design, I had to
+essentially forget a record pattern synonym's local names when
+converting them to Template Haskell syntax and later, when converting
+them back, regenerate these names again from scratch. Doing this
+(slightly) more involved conversion between Haskell's abstract syntax
+and Template Haskell syntax hadn't been needed before, so I had to
+come up with a design to achieve it. In the end, the solution turned
+out to be quite small code-wise, but accomplishing it required me to
+understand the TH implementation much better than I had before.
 
 
+
+FINISH THIS ACCORDING TO MY NOTES!
 
 \section{Conclusion}
 
