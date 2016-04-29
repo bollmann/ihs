@@ -6,7 +6,7 @@
 
 \usepackage{todonotes}
 \usepackage{paralist}
-\usepackage[top=2cm,left=4cm,right=4cm,bottom=2cm]{geometry}
+\usepackage[top=2cm,left=3.5cm,right=3.5cm,bottom=2cm]{geometry}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{textcomp}
@@ -63,7 +63,8 @@ Template Haskell was conceived by Tim Sheard and Simon Peyton Jones in
 setting of Haskell. Since then, the original implementation has
 evolved quite a bit \cite{th2, qq, th3}. Most notably, in 2007
 Geoffrey Mainland added support for quasi quoting \cite{qq}, which
-makes the embedding of domain specific languages yet easier.
+makes the embedding of domain specific languages into the Haskell host
+language even easier.
 
 As it exists today, Template Haskell has two main areas of
 application: Haskell code generation and facilitating the embedding of
@@ -932,8 +933,8 @@ templates.
 
 \section{Template Haskell's Implementation in GHC}
 
-The Template Haskell functionality described in the previous section
-is implemented by a public Haskell library as well as a language
+The Template Haskell functionality from the previous section is
+implemented by a public Haskell library as well as a language
 extension to GHC. The Template Haskell library, called
 \texttt{template-haskell}, defines the user-facing API as described in
 the previous section. It provides the main module
@@ -959,20 +960,17 @@ Inside GHC, Template Haskell is implemented by the
 purpose is (a) to run meta programs at compile-time through splice
 operator |$(..)|; (b) to represent Haskell code as data by enclosing
 it in quotation brackets |[|| .. ||]|; and (c) to provide an interface
-for reification. The GHC extension is essentially implemented by
-modules \texttt{rename/rnSplice.hs}, \texttt{typecheck/TcSplice.hs},
+for reification. The functionality is mainly implemented by modules
+\texttt{rename/rnSplice.hs}, \texttt{typecheck/TcSplice.hs},
 \texttt{deSugar/DsMeta.hs}, and \texttt{hsSyn/Convert.hs},
-respectively. Each such GHC module is exercised at a different stage
-during the compilation of a Haskell program that uses Template
-Haskell's meta programming facilities.
+respectively. Each GHC module is invoked at a different stage during
+the compilation of a Haskell program that uses Template Haskell's meta
+programming facilities.
 
-%% In the following, the implementation of each of the three features is
-%% described from a high-level perspective. A basic knowledge of GHC's
-%% overall architecture is assumed. Simon Marlow and Simon Peyton Jones
-%% provide an excellent overview of GHC in ``The Glasgow Haskell
-%% Compiler'' in~\cite{aosa}.
+\todo{make a better connection between the points (a) - (c) and their
+  implementation through the above modules}
 
-In the following, we briefly highlight how the above features (a) to
+In the following, I briefly highlight how the above features (a) to
 (c) fall into the big picture of GHC's multi-step compilation process
 of a module @M@. Simon Marlow and Simon Peyton Jones provide an
 excellent general and more thorough overview of GHC in ``The Glasgow
@@ -983,14 +981,14 @@ extension, GHC first lexes and parses @M@'s Haskell surface syntax
 into abstract Haskell syntax. Next, GHC's renamer processes @M@'s
 abstract syntax, resolving the scopes of the module's identifiers and
 connecting them to their binding sites. As part of renaming, meta
-programs are evaluated (feature (a)): all top-level splices occurring
-in the Haskell module @M@ are executed and their results spliced in
-place of them. In particular, when the renamer comes across a splice
-|$(exp)|, it triggers a subcompilation process of just expression
-|exp|. This subcompilation first typechecks |exp| to ensure that it
-has type @Q Exp@ (or @Q [Dec]@, etc.) and thus that it represents a
-valid Template Haskell object program. If typechecking succeds, |exp|
-is then desugared to an equivalent, but simpler core expression, and
+programs are evaluated: all top-level splices occurring in the Haskell
+module @M@ are executed and their results spliced in place of them. In
+particular, when the renamer comes across a splice |$(exp)|, it
+triggers a subcompilation process of just expression |exp|. This
+subcompilation first typechecks |exp| to ensure that it has type @Q
+Exp@ (or @Q [Dec]@, etc.) and thus that it represents a valid Template
+Haskell object program. If typechecking succeds, |exp| is then
+desugared to an equivalent, but simpler core expression, and
 afterwards compiled, linked, and run. Running the compiled
 representation of |exp| consequently yields a monadic value of type @Q
 Exp@ (or @Q [Dec]@, or the like), which is performed via Template
@@ -1033,7 +1031,7 @@ generated object program itself. This is because object program
 construction in Template Haskell is untyped. All that is known is that
 a constructed object program is of type @Q Exp@ (or @Q [Dec]@, etc.),
 but nothing else; particularly it is not clear whether the generated
-object program's terms are composed in a valid manner. To ensure the
+object program's terms are composed in a correct manner. To ensure the
 type-safety of generated object programs, these are type checked after
 being spliced in as Haskell code. In particular, all previously in the
 renamer spliced in object programs are now rechecked from scratch.
@@ -1078,17 +1076,85 @@ programs by translating the former into the latter at the level of
 Haskell's Core language.
 
 The desugared Haskell module @M@ is finally fed into one of several
-possible code generators to generate an executable module. This
-concludes the life-cycle of Template Haskell for compile-time meta
-programming during the compilation of a Haskell module @M@.
+possible code generators to generate machine code for the architecture
+at hand. This concludes the life-cycle of Template Haskell for
+compile-time meta programming during the compilation of a Haskell
+module @M@.
 
-\todo{
-  * RnSplice.hs
-  * TcSplice.hs
-  * DsMeta.hs
-  * Convert.hs }
+\todo{mention how this process relates to the modules * RnSplice.hs *
+  TcSplice.hs * DsMeta.hs * Convert.hs !}
 
 \section{Adding Pattern Synonyms Support to Template Haskell}
+
+During this independent study, I added support for the recently added
+\texttt{PatternSynonyms} extension to Template Haskell. Pattern
+Synonyms were introduced in GHC 7.8 and allow to give short names
+(i.e., synonyms) to more complicated patterns. These synonyms can then
+be used to match against the underlying patterns. Moreover, in certain
+cases, the succinct pattern synonym names can also be used as
+``smart'' constructors to build the represented, more involved
+patterns in an expression context. Thus, pattern synonyms serve as a
+convenient interface to pattern match against complex patterns and to
+build lengthy expressions in a succinct manner.
+
+\todo{add motivating pattern synonyms example here? If so, which one?}
+
+In general, pattern synonyms come in three flavors: unidirectional,
+implicitly bidirectional, and explicitly bidirectional pattern
+synonyms. They are explained in detail in GHC's users manual \todo{add
+  citation?! Or explain the differences!}.
+
+To add pattern synonym support to Template Haskell, I mainly had to
+extend the public TH API as well as the GHC internal modules
+\texttt{hsSyn/Convert.hs}, \texttt{deSugar/DsMeta.hs}, and
+\texttt{typecheck/TcSplice.hs}. In Template Haskell's public library,
+I added syntax constructors as well as corresponding syntax
+construction functions to represent pattern synonyms inside TH object
+programs. Moreover, I changed the reification datatype to also take
+pattern synonyms into account.
+
+Next, inside GHC, I extended modules \texttt{deSugar/DsMeta.hs} and
+\texttt{hsSyn/Convert.hs} to also convert between Haskell's pattern
+synonyms and their representation in Template Haskell. In particular,
+I extended \texttt{deSugar/DsMeta.hs} to desugar Haskell's pattern
+synonyms into a core expression denoting a pattern synonym in Template
+Haskell syntax. Similarly, I extended \texttt{hsSyn/Convert.hs} to
+convert the Template Haskell representation of pattern synonyms into
+the corresponding Haskell abstract syntax. Finally, I modified
+\texttt{typecheck/TcSplice.hs} to also provide reification of pattern
+synonyms, namely to return a pattern synonym's type signature upon
+request.
+
+My initial implementation draft was quite straightforward and took
+only around two weeks to complete. This was mainly because I could
+reuse most of GHC's already existing Template Haskell architecture to
+also desugar, convert, and reify pattern synonyms. However, the devil
+was then in the detail. In particular, after completing my first
+implementation draft, I faced two major problems, which took me around
+6 more weeks (on and off) to fully resolve.
+
+The first problem concerned the types of pattern synonyms. In general,
+a pattern synonym's type signature is of the following form:
+
+\[
+\forall a_1 \dots a_n. \forall b_1 \dots b_m. \; \; CReq
+\Rightarrow CProv \Rightarrow t_1
+\rightarrow t_2 \rightarrow \dots \rightarrow t_n \rightarrow t
+\]
+
+That is, a pattern synonym's type comes with two forall quantifiers
+and two constraint contexts. The first \(\forall a_1 \dots a_n\)
+quantifies over all universially bound type variables and its context
+\(CReq\) denotes these type variables' required constraints. The
+second \(\forall b_1 \dots b_m\) refers to the pattern synonym's
+existentially bound type variables and the context \(CProv\) refers to
+their provided constraints.
+
+Due to their unusual type shapes, I had to special-case the
+reification of pattern synonym type signatures as well as their
+conversion from Template Haskell syntax to real Haskell syntax.
+
+
 
 \section{Conclusion}
 
