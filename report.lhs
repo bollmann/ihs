@@ -64,11 +64,11 @@ setting of Haskell. Since then, the original implementation has
 evolved quite a bit \cite{th2, qq, th3}. Most notably, in 2007
 Geoffrey Mainland added support for quasi quoting \cite{qq}, which
 makes the embedding of domain specific languages into the Haskell host
-language even easier.
+language much easier.
 
 As it exists today, Template Haskell has two main areas of
-application: Haskell code generation and facilitating the embedding of
-domain specific languages.
+application: Haskell code generation at compile-time and facilitating
+the embedding of domain specific languages.
 
 As a code generator, Template Haskell empowers a user to write many,
 syntactically different, object programs all at once by means of a
@@ -596,7 +596,8 @@ expression matches some input string\footnote{This example draws on
 >   | Star RegExp        -- r* (Kleene star); matches r zero or more times
 >   | Empty              -- matches only the empty string
 >   | Void               -- matches nothing (always fails)
->   | Var String         -- a variable holding another (explained later)
+>   | Var String         -- a variable holding another regexp
+>                        -- (explained later)
 >   deriving Show
 
 > match :: RegExp -> String -> Bool
@@ -646,9 +647,10 @@ functions like
 \end{itemize}
 do not resolve the problem of working with regular expressions in
 concrete syntax. Due to ``compiling'' regular expressions at run time,
-they don't provide any compile time type safety guarantees that the
-input raw expression is wellformed, thus leading to either run time
-exceptions or tedious handling for compiled expressions.
+they don't provide any compile-time type-safety guarantees that the
+input raw expression is wellformed; thus they lead to either run time
+exceptions for illformed regular expressions (|compile|) or imply a
+tedious usability for compiled regexes (|compile'|).
 
 To preserve type safety and yet to be able to use regular expressions
 conveniently, we want to embed the concrete regular expression syntax
@@ -752,26 +754,25 @@ host language into the EDSL for regular expressions.
 Parsing a raw regular expression into a corresponding @RegExp@ value
 is a routine task using (e.g.) the \texttt{parsec} library:
 
-\todo{fix this parser! Parsing multiple ranges (e.g. [a-zA-Z0-9])
-  breaks parsing afterwards ?!?}
-
-> regexParser :: P.Parsec String () RegExp
-> regexParser = P.try alts <|> (P.eof *> pure Empty)
->   where
->     atom       = P.try var <|> char
->     var        = Var <$> (P.string "${" *> some (P.noneOf "}") <* P.char '}')
->     char       = P.try charclass <|> singlechar
->     singlechar = (Char . Set.singleton) <$> P.noneOf specials
->     charclass  = fmap (Char . Set.fromList) $ P.char '[' *> content <* P.char ']'
->     content    = (concat <$> P.manyTill range (P.lookAhead (P.char ']')))
->                    <|> some (P.noneOf specials)
->     range      = enumFromTo <$> (P.anyChar <* P.char '-') <*> P.anyChar
->     alts       = P.try (Alt <$> seqs <*> (P.char '|' *> alts)) <|> seqs
->     seqs       = P.try (Seq <$> star <*> seqs) <|> star
->     star       = P.try (Star <$> (atom <* P.char '*'))
->                    <|> P.try (Star <$> (P.char '(' *> alts <* P.string ")*"))
->                    <|> atom
->     specials   = "[]()*|"
+> regexParser :: Parsec String () RegExp
+> regexParser = alts <* eof where
+>   atom       = try var <|> char
+>   var        = Var <$> (string "${" *> many1 (noneOf "}") <* P.char '}')
+>   char       = charclass <|> singlechar
+>   singlechar = (Char . Set.singleton) <$> noneOf specials
+>   charclass  = fmap (Char . Set.fromList) $
+>                  P.char '[' *> content <* P.char ']'
+>   content    = try (concat <$> many1 range)
+>                    <|> many1 (noneOf specials)
+>   range      = enumFromTo
+>                  <$> (noneOf specials <* P.char '-')
+>                  <*> noneOf specials
+>   alts       = try (Alt <$> seqs <*> (P.char '|' *> alts)) <|> seqs
+>   seqs       = try (Seq <$> star <*> seqs) <|> star
+>   star       = try (Star <$> (atom <* P.char '*'))
+>                  <|> try (Star <$> (P.char '(' *> alts <* string ")*"))
+>                  <|> atom
+>   specials   = "[]()*|"
 
 To represent regular expressions of type @RegExp@ as Haskell
 expressions of type @Q Exp@, Template Haskell's @Lift@ typeclass is
@@ -1076,7 +1077,7 @@ expression of a quotation bracket runs its nested splices to yield the
 overall TH object program. Overall, the desugaring achieves
 representing Haskell code as corresponding Template Haskell object
 programs by translating the former into the latter at the level of
-Haskell's Core language.
+Haskell's intermediate language \texttt{Core}.
 
 The desugared Haskell module @M@ is finally fed into one of several
 possible code generators to generate machine code for the architecture
@@ -1116,12 +1117,12 @@ construction functions to represent pattern synonyms inside TH object
 programs. Moreover, I changed the reification datatype to also take
 pattern synonyms into account.
 
-Next, inside GHC, I extended modules \texttt{deSugar/DsMeta.hs} and
+Next, inside GHC, I modified modules \texttt{deSugar/DsMeta.hs} and
 \texttt{hsSyn/Convert.hs} to also convert between Haskell's pattern
 synonyms and their representation in Template Haskell. In particular,
 I extended \texttt{deSugar/DsMeta.hs} to desugar Haskell's pattern
 synonyms into a core expression denoting a pattern synonym in Template
-Haskell syntax. Similarly, I extended \texttt{hsSyn/Convert.hs} to
+Haskell syntax. Similarly, I adjusted \texttt{hsSyn/Convert.hs} to
 convert the Template Haskell representation of pattern synonyms into
 the corresponding Haskell abstract syntax. Finally, I modified
 \texttt{typecheck/TcSplice.hs} to also provide reification of pattern
@@ -1172,21 +1173,32 @@ Haskell, even though the Haskell AST for record pattern synonym's
 internally adds more structure. To achieve this design, I had to
 essentially forget a record pattern synonym's local names when
 converting them to Template Haskell syntax and later, when converting
-them back, regenerate these names again from scratch. Doing this
-(slightly) more involved conversion between Haskell's abstract syntax
-and Template Haskell syntax hadn't been needed before, so I had to
-come up with a design and the machinery to achieve it. In the end, the
-solution turned out to be quite small code-wise, but accomplishing it
-required me to understand the TH implementation much better than I had
-before.
+them back to Haskell syntax, regenerate these names again from
+scratch. Doing this (slightly) more involved conversion between
+Haskell's abstract syntax and Template Haskell syntax hadn't been
+needed before, so I had to come up with a design and the machinery
+implementing it. In the end, the solution turned out to be quite small
+code-wise, but accomplishing it required me to understand the TH
+implementation much better than I had before.
 
-And even once I had come up with a suitable design, quoting and
-splicing in record pattern synonyms did not work as expected at
-first. Learning about and then using GHC's debugging flags
-@-ddump-splices@, @-dddump-rn@, and @-ddump-ds@, I noticed that a
-record pattern synonym's binders
-
-FINISH THIS ACCORDING TO MY NOTES!
+However, in the conceived design, quoting and splicing record pattern
+synonyms did not work as expected initially. Learning about GHC
+debugging, I noticed the problem by enabling debug flags
+@-ddump-splices@, @-dddump-rn@, and @-ddump-ds@. Splicing in Template
+Haskell record pattern synonyms as Haskell code turned out to break
+the link between a record pattern synonym's selector functions and
+their usage sites. In particular, after running a meta program that
+spliced in record pattern synonyms the links between the selector
+binders and their usage sites were dissolved. Digging further into GHC
+debugging by using \texttt{utils/Outputable.hs}'s trace and debug
+utilities to put custom trace messages into (pure or impure) Haskell
+code, I finally rooted the cause for the incorrect name resolution of
+spliced in Template Haskell code: The recently added GHC extension
+\texttt{DuplicateRecordFields} wasn't compatible with Template
+Haskell. In fact, as it turned out, not only record pattern synonym
+selectors, but record selectors of data types in general, caused an
+incorrect scope resolution after splicing them in with Template
+Haskell.
 
 \section{Conclusion}
 
