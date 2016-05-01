@@ -128,17 +128,17 @@ resulting as output from the meta programs.
 \subsection{Template Haskell as a Code Generator}
 
 As an introductory example, consider Haskell's @Prelude@ function
-|curry :: ((a,b) -> c) -> a -> b -> c|, which converts a function
-taking a pair to its curried equivalent. Unfortunately, there are no
-@Prelude@ functions that provide the same currying functionality for
-functions taking arbitrary \(n\)-tuples. Moreover, having to write
-more than a few of these functions manually is, while trivial, a very
-repetitive and cumbersome task. Instead we wish to generate needed
-|curry3|, |curry5|, or |curry8| functions through a single meta
-program on demand. Template Haskell let's us do just this. The idea is
-to write a meta function |curryN :: Int -> Q Exp| which, given a
-number \(n \geq 1\), \textit{constructs the source code} for an
-\(n\)-ary |curry| function:
+\texttt{curry :: ((a,b) -> c) -> a -> b -> c}, which converts a
+function taking a pair to its curried equivalent. Unfortunately, there
+are no @Prelude@ functions that provide the same currying
+functionality for functions taking arbitrary \(n\)-tuples. Moreover,
+having to write more than a few of these functions manually is, while
+trivial, a very repetitive and cumbersome task. Instead we wish to
+generate needed |curry3|, |curry5|, or |curry8| functions through a
+single meta program on demand. Template Haskell let's us do just
+this. The idea is to write a meta function |curryN :: Int -> Q Exp|
+which, given a number \(n \geq 1\), \textit{constructs the source
+  code} for an \(n\)-ary |curry| function:
 
 > import Control.Monad
 > import Language.Haskell.TH
@@ -194,17 +194,17 @@ we can devise a further meta program on top of |curryN| as follows:
 Running |$(genCurries 20)| will then splice in the first 20 curry
 functions at compile-time, namely:
 
-< curry1  = \f x1 -> f (x1)
-< curry2  = \f x1 x2 -> f (x1, x2)
-< curry3  = \f x1 x2 x3 -> f (x1, x2, x3)
-< curry4  = \f x1 x2 x3 x4 -> f (x1, x2, x3, x4)
+< curry1  = \ f x1 -> f (x1)
+< curry2  = \ f x1 x2 -> f (x1, x2)
+< curry3  = \ f x1 x2 x3 -> f (x1, x2, x3)
+< curry4  = \ f x1 x2 x3 x4 -> f (x1, x2, x3, x4)
 < ...
-< curry20 = \f x1 x2 ... x20 -> f (x1, x2, ..., x20)
+< curry20 = \ f x1 x2 ... x20 -> f (x1, x2, ..., x20)
 
 Note that in this case, |genCurries| returns a list of function
 declarations that bind the anonymous lambda abstractions built by
-|curryN|. Furthermore, to name the function bindings, we use the
-function |mkName :: String -> Name| instead of |newName :: String -> Q
+|curryN|. Furthermore, to name the function bindings, we use function
+|mkName :: String -> Name| instead of |newName :: String -> Q
 Name|. The reason is that here we want to generate functions |curry1|
 to |curry20| with exactly the prescribed names, so they can be
 captured and referred to from other parts of the program.
@@ -349,13 +349,13 @@ referring to the @Q@ type identifier.
 As a second example that uses both syntax construction functions as
 well as quotation brackets, let's consider a meta program |mapN :: Int
 -> Q Dec| to build ``generic'' |map| functions at
-compile-time. Invoking |$(mapN 1)| should generate the well-known |map
-:: (a -> b) -> [a] -> [b]| function; evaluating |$(mapN 2)| should
-splice in a binary map function of type |(a -> b -> c) -> [a] -> [b]
--> [c]|, and so on\footnote{Note that \(n\)-ary maps are better
-  written using Applicative Functors and @ZipList@s. For understanding
-  Template Haskell as a code generator, this example is still useful
-  though.}.
+compile-time. Invoking |$(mapN 1)| should generate the well-known
+standard function |map :: (a -> b) -> [a] -> [b]|; evaluating |$(mapN
+2)| should splice in a binary map function of type |(a -> b -> c) ->
+[a] -> [b] -> [c]|, and so on\footnote{Note that \(n\)-ary maps are
+  better written using Applicative Functors and @ZipList@s. For
+  understanding Template Haskell as a code generator, this example is
+  still useful though.}.
 
 > mapN :: Int -> Q Dec
 > mapN n
@@ -367,10 +367,11 @@ splice in a binary map function of type |(a -> b -> c) -> [a] -> [b]
 >               xs <- replicateM n (newName "x")
 >               ys <- replicateM n (newName "ys")
 >               let argPatts  = varP f : consPatts
->                   consPatts = [ [p| $(varP x) : $(varP ys) |] | (x,ys) <- xs `zip` ys ]
->                   apply     = foldl (\g x -> [| $g $(varE x) |])
->                   first = apply (varE f) xs
->                   rest  = apply (varE name) (f:ys)
+>                   consPatts = [ [p| $(varP x) : $(varP ys) |]
+>                               | (x,ys) <- xs `zip` ys ]
+>                   apply     = foldl (\ g x -> [| $g $(varE x) |])
+>                   first     = apply (varE f) xs
+>                   rest      = apply (varE name) (f:ys)
 >               clause argPatts (normalB [| $first : $rest |]) []
 >     cl2  = clause (replicate (n+1) wildP) (normalB (conE `[])) []
 
@@ -385,16 +386,16 @@ time:
 Nonetheless, meta function |mapN| exhibits a couple of new Template
 Haskell features: First, quotation brackets and splices are used in
 several places to abbreviate the object program construction. For
-example, helper |apply| used to generate |map3|'s body |f x y z : map3
-f xs ys zs| exemplifies the use of quotation brackets; it also
-highlights how splicing (``|$|'') and quotes (``|[|| .. ||]|'') cancel
-each other out. Second, identifier quotes (namely, |`[]|) are used to
-create an object program @Name@ that refers to Haskell's built-in list
-constructor |[]|. Third, the example shows how all three APIs for
-building Template Haskell object programs can be interleaved. The
-lowermost verbose API of building a raw data type inside the quotation
-monad @Q@ can be abbreviated, where possible, with syntax constructor
-functions and quotation brackets.
+example, helper definition |apply| used to generate |map3|'s non-empty
+body |f x y z : map3 f xs ys zs| exemplifies the use of quotation
+brackets; it also highlights how splicing (``|$|'') and quotes (``|[||
+  .. ||]|'') cancel each other out. Second, identifier quotes (namely,
+|`[]|) are used to create an object program @Name@ that refers to
+Haskell's built-in list constructor |[]|. Third, the example shows how
+all three APIs for building Template Haskell object programs can be
+interleaved. The lowermost verbose API of building a raw data type
+inside the quotation monad @Q@ can be abbreviated, where possible,
+with syntax constructor functions and quotation brackets.
 
 Lastly, the |mapN| example highlights how Haskell's static scoping is
 extended to object programs. The scoping principle for object programs
@@ -470,17 +471,18 @@ writing them all out by hand is quite cumbersome. Especially since
 writing a @Functor@ instance follows the same pattern across all of
 the above types and in fact any type @T a@.
 
-To make a type constructor @T@ an instance of @Functor@, function
-|fmap :: (a -> b) -> T a -> T b| needs to be implemented. Its
-definition is hereby precisely fixed by parametricity and the functor
-laws: By parametricity, all values of type @a@ must be replaced
-according to the provided function with values of type
+To make a type constructor @T@ an instance of typeclass @Functor@, the
+class method |fmap :: (a -> b) -> T a -> T b| needs to be
+implemented. Its definition is hereby precisely fixed by parametricity
+and the functor laws: By parametricity, all values of type @a@ must be
+replaced according to the provided function with values of type
 @b@. Furthermore, by the functor laws, all other shapes of the input
 value of type @T a@ must be preserved when transforming it to the
 output value of type @T b@.
 
-The idea of this algorithm is implemented by meta function
-|deriveFunctor :: Name -> Q [Dec]| below.
+Meta function |deriveFunctor :: Name -> Q [Dec]| and its auxiliary
+definitions |genFmap|, |genFmapClause|, and |newField| below implement
+the idea of this algorithm:
 
 > data Deriving = Deriving { tyCon :: Name, tyVar :: Name }
 >
@@ -535,33 +537,33 @@ The idea of this algorithm is implemented by meta function
 
 Given the name of a type constructor (e.g. @Result@, @List@, etc.),
 |deriveFunctor| derives the code for this type constructor's @Functor@
-instance.  For example, running the splice |$(deriveFunctor ``Tree)|
+instance.  For example, running the splice |$(deriveFunctor ''Tree)|
 generates the following code:
 
 > instance Functor Tree where
 >   fmap f (Leaf x)     = Leaf (f x)
 >   fmap f (Node l x r) = Node (fmap f l) (f x) (fmap f r)
 
-Meta function |deriveFunctor| hereby shows reification in
-action. Calling function |reify :: Name -> Q Info| on the input type
-constructor's name yields information about this data type's
-definition. It thus learns whether the data type was defined using the
-@data@ or @newtype@ keyword, which constructors it defines and what
-their shapes are. Based on the learned structure, |deriveFunctor| is
-then able to generate a suitable definition of |fmap| and its
-different clauses via helper functions |genFmap|, |genFmapClause|, and
-|newField|, respectively. The idea is to generate one |fmap| clause
-for each of the data type's constructors. And each clause then
-transforms its constructor by recursively modifying all of the
-constructor's fields of type @a@ through |fmap|'s function @f@, while
-retaining all other shapes.
+Most notably, meta function |deriveFunctor| shows reification in
+action. It calls function |reify :: Name -> Q Info| on the input type
+constructor's name to yield information about this data type's
+definition. Using |reify|, it thus learns whether the data type was
+defined using the @data@ or @newtype@ keyword, which constructors it
+defines and what their shapes are. Based on the learned structure,
+|deriveFunctor| is then able to generate a suitable definition of
+|fmap| and its different clauses via helper functions |genFmap|,
+|genFmapClause|, and |newField|, respectively. The idea is to generate
+one |fmap| clause for each of the data type's constructors. And each
+clause then transforms its constructor by recursively modifying all of
+the constructor's fields of type @a@ through |fmap|'s function @f@,
+while retaining all other shapes.
 
 In an analogous manner, a function |deriveFoldable :: Name -> Q [Dec]|
-can be written to derive a data type's @Foldable@ instance by
-providing function |foldMap :: Monoid m => (a -> m) -> T a ->
-m|. Again, |foldMap|'s definition follows directly from a data type's
-bare definition, which can be observed by means of
-reification\footnote{In fact, the example at
+can be written to derive a data type's @Foldable@ instance. All that
+is needed is to provide a definition for function |foldMap :: Monoid m
+=> (a -> m) -> T a -> m|. Again, |foldMap|'s definition follows
+directly from a data type's bare definition, which can be observed by
+means of reification\footnote{In fact, the example at
   https://www.github.com/bollmann/th-samples/DeriveFunctorFoldable.hs
   implements a (slightly more involved) meta program to derive both
   @Functor@ and @Foldable@ instances in a single framework.}. This
@@ -584,16 +586,17 @@ their structure, as well as an evaluator checking whether a regular
 expression matches some input string\footnote{This example draws on
   Penn's CIS 552 \textit{Advanced Programming} course, specifically
   Assignment 5:
-  http://www.seas.upenn.edu/~cis552/current/hw/hw05/Main.html}:
+  http://www.seas.upenn.edu/~cis552/current/hw/hw05/Main.html.}:
 
 > data RegExp
->   = Char (Set Char)    -- [a], [abc], [a-z]; matches a single character from the class
+>   = Char (Set Char)    -- [a], [abc], [a-z]; matches a single
+>                        -- character from the specified class
 >   | Alt RegExp RegExp  -- r1 | r2 (alternation); matches either r1 or r2
 >   | Seq RegExp RegExp  -- r1 r2 (concatenation); matches r1 followed by r2
 >   | Star RegExp        -- r* (Kleene star); matches r zero or more times
 >   | Empty              -- matches only the empty string
 >   | Void               -- matches nothing (always fails)
->   | Var String         -- a variable holding another regexp (explained later)
+>   | Var String         -- a variable holding another (explained later)
 >   deriving Show
 
 > match :: RegExp -> String -> Bool
@@ -663,7 +666,7 @@ as follows:
 
 Note how we can even compose regular expressions easily from smaller
 building blocks. Writing |${alphaNum}| interpolates the regex referred
-to by |alphaNum| into the larger |validDotComMail| regex. In essence,
+to by |alphaNum| into the larger regex |validDotComMail|. In essence,
 this means that we can define our own notion of splicing values from
 the Haskell meta language into the embedded object language of regular
 expressions. We can go further and even allow to run Haskell code when
@@ -951,9 +954,9 @@ typeclass for representing Haskell programs as data; module
 @Language.Haskell.TH.Lib@ defines the corresponding syntax
 construction functions. Furthermore, module @Language.Haskell.TH.Ppr@
 provides a pretty printer for displaying Template Haskell object
-programs in concrete syntax. Finally, module
-@Language.Haskell.TH.Quote@ defines the quasi quoter datatype for
-embedding domain specific languages.
+programs in concrete syntax. Finally, @Language.Haskell.TH.Quote@
+defines the quasi quoter datatype for embedding domain specific
+languages.
 
 Inside GHC, Template Haskell is implemented by the
 \texttt{TemplateHaskell} language extension. This extension's main
@@ -1151,7 +1154,7 @@ existentially bound type variables and the context \(CProv\) refers to
 their provided constraints.
 
 Due to their unusual type shapes, I couldn't as easily reuse already
-existing code for the reification of Haskell types (in
+existing machinery for the reification of Haskell types (in
 \texttt{typecheck/TcSplice.hs}) and for converting Template Haskell
 types to their Haskell analogs (in \texttt{hsSyn/Convert.hs}), as I
 had originally thought. Instead I had to special-case the reification
@@ -1172,11 +1175,16 @@ converting them to Template Haskell syntax and later, when converting
 them back, regenerate these names again from scratch. Doing this
 (slightly) more involved conversion between Haskell's abstract syntax
 and Template Haskell syntax hadn't been needed before, so I had to
-come up with a design to achieve it. In the end, the solution turned
-out to be quite small code-wise, but accomplishing it required me to
-understand the TH implementation much better than I had before.
+come up with a design and the machinery to achieve it. In the end, the
+solution turned out to be quite small code-wise, but accomplishing it
+required me to understand the TH implementation much better than I had
+before.
 
-
+And even once I had come up with a suitable design, quoting and
+splicing in record pattern synonyms did not work as expected at
+first. Learning about and then using GHC's debugging flags
+@-ddump-splices@, @-dddump-rn@, and @-ddump-ds@, I noticed that a
+record pattern synonym's binders
 
 FINISH THIS ACCORDING TO MY NOTES!
 
