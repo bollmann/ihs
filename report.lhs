@@ -959,113 +959,112 @@ respectively. Each GHC module is invoked at a different stage during
 the compilation of a Haskell program that uses Template Haskell's meta
 programming facilities.
 
-\todo{make a better connection between the points (a) - (c) and their
-  implementation through the above modules}
-
-In the following, I highlight how the above features (a) to (c) fall
-into the big picture of GHC's compilation process and how each feature
-relates to the mentioned GHC modules. Simon Marlow and Simon Peyton
-Jones provide an excellent general and more thorough overview of GHC
-in ``The Glasgow Haskell Compiler''~\cite{aosa}.
+The following section highlights how the above features (a) to (c)
+fall into the big picture of GHC's compilation process. Simon Marlow
+and Simon Peyton Jones provide an excellent general and more thorough
+overview of GHC in ``The Glasgow Haskell Compiler''~\cite{aosa}.
 
 To compile a Haskell module @M@ that uses the @TemplateHaskell@
 extension, GHC first lexes and parses @M@'s concrete Haskell syntax
 into abstract Haskell syntax. Next, GHC's renamer processes @M@'s
 abstract syntax, resolving the scopes of the module's identifiers and
-connecting them to their binding sites. As part of renaming, meta
-programs are evaluated: all top-level splices occurring in the Haskell
-module @M@ are executed and their results spliced in place of them. In
-particular, when the renamer comes across a splice |$(exp)|, it
-triggers a subcompilation process of just expression |exp|. This
-subcompilation first typechecks |exp| to ensure that it has type @Q
-Exp@ (or @Q [Dec]@, etc.) and thus that it represents a valid Template
-Haskell object program. If typechecking succeds, |exp| is then
-desugared to an equivalent, but simpler core expression, and
-afterwards compiled, linked, and run. Running the compiled
-representation of |exp| consequently yields a monadic value of type @Q
-Exp@ (or @Q [Dec]@, or the like), which is performed via Template
-Haskell's |runQ| function to obtain the generated Template Haskell
-object program. This object program is finally converted into real
-Haskell (abstract) syntax and spliced in place of the original meta
-program |$(exp)|. This concludes the evaluation of meta program
-|exp|. After splicing in this expression's result, the renamer
-continues its renaming process on the spliced in result program as if
-there had never been a splice |$(exp)| at all.
+connecting them to their binding sites. As part of renaming, feature
+(a) is implemented: the evaluation of meta programs. All top-level
+splices occurring in the Haskell module @M@ are renamed and then
+executed with their results spliced in place of them. In particular,
+when the renamer comes across a splice |$(mp)|, it triggers a
+subcompilation process of just meta program |mp|. This subcompilation
+first typechecks |mp| to ensure that it has type @Q Exp@ (or @Q
+[Dec]@, etc.) and thus that it yields a valid Template Haskell object
+program. If typechecking succeeds, |mp| is then desugared to an
+equivalent, but simpler core expression, and afterwards compiled,
+linked, and run. The result is a monadic value of type @Q Exp@ (or @Q
+[Dec]@, or the like), which is performed via Template Haskell's |runQ|
+function to obtain the generated Template Haskell object program. This
+object program is finally converted into real Haskell (abstract)
+syntax and spliced in place of the original meta program |$(mp)|. This
+concludes the evaluation of meta program |mp|. After splicing in the
+meta program's result, the renamer continues its renaming process on
+the spliced in result program as if there had never been any splice
+|$(mp)|.
 
 Running Template Haskell splices in the renamer and thus before
 typechecking the enclosing Haskell module gives rise to the so-called
-stage restriction: a splice |$(expr)| may only use imported and thus
-already fully typechecked code. The stage restriction is presumably
-Template Haskell's most annoying limitation as it requires a user to
-separate the definitions of meta programs from their use-sites in
-splices into different modules. However, overcoming the stage
-restriction is difficult to implement. After all, the code inside a
-splice must be successfully typechecked before it can be run. And
-typechecking a splice's code coming from the very module currently
-being renamed would require evaluation of splices to be run during
-typechecking (as in fact was done in the original Template Haskell
-implementation \cite{th1}). However, postponing the evaluation of
-splices to the typechecking phase bears other problems\footnote{see
-  \cite{th3} for the details}, and yet requires a module's non-splicy
-parts to be typechecked before its splicy parts; a tricky procedure
-slowing down the compilation of a Haskell module. Hence, until today
-the stage restriction has persisted in the Glasgow Haskell Compiler.
+stage restriction: a top-level splice |$(mp)| may only use imported
+and thus already fully typechecked code. The stage restriction is
+presumably Template Haskell's most annoying limitation as it requires
+a user to separate the definitions of meta programs from their
+use-sites in splices into different modules. However, overcoming the
+stage restriction is difficult to implement. After all, the code
+inside a splice must be successfully typechecked before it can be
+run. And typechecking a splice's code coming from the very module
+currently being renamed would require evaluation of splices to be run
+after typechecking (as in fact was done in the original Template
+Haskell implementation \cite{th1}). However, postponing the evaluation
+of splices to after the typechecking phase bears other problems, most
+dominantly how to rename the identifiers brought into scope by a
+splice's execution. Hence, until today the stage restriction has
+persisted in the Glasgow Haskell Compiler.
 
 After renaming module @M@, typechecking happens. It ensures that the
 composition of @M@'s terms is allowed by its types. With regard to
-Template Haskell, the typechecking process is quite simple. As part of
-@M@'s code, Haskell meta programs are checked to indeed construct
-Template Haskell object programs of type @Q Exp@, (or @Q [Dec]@, or
-the like). This ensures that a Haskell meta program in fact builds
-some sort of a Haskell expression (or Haskell declarations,
-etc.). However, it doesn't enforce the type correctness of the
-generated object program itself. This is because object program
-construction in Template Haskell is untyped. All that is known is that
-a constructed object program is of type @Q Exp@ (or @Q [Dec]@, etc.),
-but nothing else; particularly it is not clear whether the generated
-object program's terms are composed in a correct manner. To ensure the
-type-safety of generated object programs, these are type checked after
-being spliced in as Haskell code. In particular, all previously in the
-renamer spliced in object programs are now rechecked from scratch.
+Template Haskell, the typechecking process is quite simple. Meta
+programs are checked in the same manner as normal Haskell code. Their
+only distinctive characteristic is to construct a Template Haskell
+object program and thus to be of type @Q Exp@, (or @Q [Dec]@, or the
+like). While this ensures that a Haskell meta program in fact builds
+some sort of a TH expression (or declarations, etc.), it doesn't
+enforce the type correctness of the generated object program. This is
+because the object program construction in Template Haskell is
+untyped, where we don't know whether a built TH expression of type,
+say @Exp@, is actually type-correct. To ensure the type-safety of
+compile-time generated object programs, these are type checked after
+being spliced in as Haskell code. In particular, the spliced in result
+programs of all previously in the renamer pass executed meta programs
+are now rechecked from scratch.
 
 Interestingly, the contents of quotation brackets are \textit{not}
-typechecked except for ensuring that embedded splices (i.e.,
+typechecked except for ensuring that embedded splices (i.e., embedded
 invocations of meta programs) are type-safe. Besides checking that
 embedded splices correctly produce some value of a Template Haskell
-object program, quotation brackets may contain any incorrect code!
-(e.g., |[|| "false" && True ||]| is not rejected.)  The reason is that
+object program, quotation brackets may contain any type-incorrect code
+(e.g., |[|| "false" && True ||]| is not rejected). The reason is that
 due to sub splices (and particularly splicing in type expressions)
-there are several cases where typechecking cannot be performed without
-actually executing the splice. However, nested splices inside
+there are several cases where typechecking cannot be performed until
+actually executing the sub splice. However, nested splices inside
 quotation brackets are not evaluated until the quotation bracket is
 run as part of a top-level splice's execution. Hence, typechecking
 quotation brackets cannot be done in a generally sensible manner and
 is thus not attempted at all. Note that this does not violate type
 safety in general since object programs are typechecked from scratch
-after having been spliced in as Haskell code.
+after having been run and spliced in as Haskell code.
 
-\todo{briefly mention reification here?}
+Finally, it is the typechecking pass that provides Template Haskell's
+reification feature (c). Using the @Q@ monad's |reify| function in
+essence means interacting with GHC's typechecker monad @TcM@. As such,
+querying an identifier's type, a typeclass' instances, and other
+compile-time information by means of |reify| becomes possible.
 
 After GHC's typechecking pass, desugaring of module @M@'s Haskell code
 takes place. The desugaring consists of multiple steps in which the
-elaborate Haskell syntax is simplified into GHC's core language
-\texttt{Core} (i.e., System F\(\omega\) with
+elaborate Haskell syntax is simplified into GHC's intermediate
+language \texttt{Core} (i.e., System F\(\omega\) with
 Coercions~\cite{systemfc}). With regard to Template Haskell, splices
-have already been eliminated by running them in the renaming stage;
-furthermore Template Haskell object program constructions of data
-values (of (e.g.) type @Exp@, @[Dec]@, or similar) inside monad @Q@
-are desugared just in the same way as is normal do
-notation. Accordingly, only the desugaring of quotation brackets
-deserves special attention: its quoted Haskell expression is rewritten
-as a \texttt{Core} expression that, when run, produces a Template
-Haskell code fragment equivalent to the quoted Haskell expression. To
-this end, splices like |$(e)| inside a quotation bracket are replaced
-by their splice bodies |e|. Thus, the desugared \texttt{Core}
-expression of a quotation bracket runs its nested splices to yield the
-overall TH object program. Overall, the desugaring achieves
+have already been eliminated by running them in the renaming stage.
+Furthermore Template Haskell object program constructions of data
+values (of e.g. type @Exp@, @[Dec]@, or similar) inside monad @Q@ are
+desugared just in the same way as is normal do notation. Accordingly,
+only feature (b), the desugaring of quotation brackets deserves
+special attention: its quoted Haskell expression is rewritten as a
+\texttt{Core} expression that, when run, produces a Template Haskell
+code fragment equivalent to the quoted Haskell expression. To this
+end, splices like |$(e)| inside a quotation bracket are replaced by
+their splice bodies |e|. Thus, running the desugared \texttt{Core}
+expression of a quotation bracket also evaluates its nested splices to
+yield the overall TH object program. Overall, the desugaring achieves
 representing Haskell code as corresponding Template Haskell object
 programs by translating the former into the latter at the level of
-Haskell's intermediate language \texttt{Core}.
+Haskell's intermediate \texttt{Core} language.
 
 The desugared Haskell module @M@ is finally fed into one of several
 possible code generators to generate machine code for the architecture
@@ -1073,8 +1072,24 @@ at hand. This concludes the life-cycle of Template Haskell for
 compile-time meta programming during the compilation of a Haskell
 module @M@.
 
-\todo{mention how this process relates to the modules * RnSplice.hs *
-  TcSplice.hs * DsMeta.hs * Convert.hs !}
+The GHC modules implementing the \texttt{TemplateHaskell} extension
+are (mostly) invoked as part of evaluating a top-level splice |$(mp)|
+holding some meta program |mp|. The evaluation is triggered as part of
+the renaming pass by module \texttt{rename/RnSplice.hs}. It renames a
+top-level splice's body and then calls into module
+\texttt{typecheck/TcSplice.hs} for further processing. Module
+\texttt{typecheck/TcSplice.hs} first typechecks |mp| to be a valid
+meta program and then desugars it to a simpler core
+expression. Desugaring hereby involves using module
+\texttt{deSugar/DsMeta.hs} for simplifying Template Haskell's
+quotation brackets. The desugared meta program is then evaluated by
+\texttt{typecheck/TcSplice.hs} and the resulting monadic TH object
+program is performed to yield a data value representing the computed
+TH object program. This TH object program is finally spliced in as the
+result of splice |$(mp)| as real Haskell code. The conversion from
+Template Haskell syntax to real Haskell syntax is done by module
+\texttt{hsSyn/Convert.hs}. Invoking all these steps concludes the
+evaluation of meta program |mp| as part of the renaming pass.
 
 \section{Adding Pattern Synonyms Support to Template Haskell}
 
