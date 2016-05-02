@@ -1,8 +1,6 @@
 \documentclass{article}
 %include lhs2TeX.fmt
 %options -fglasgow-exts
-%format tick = "\,\,\textquotesingle"
-%format ticktick = "\,\,\textquotesingle\textquotesingle"
 
 \usepackage{todonotes}
 \usepackage{paralist}
@@ -245,8 +243,8 @@ allows to query compile-time information during the object program's
 construction. We will explain this feature in detail later.
 
 Splicing in object programs with ``|$|'' and building them from
-algebraic data types inside the quotation monad @Q@ (almost)
-constitutes the functionality of Template Haskell. However,
+algebraic data types inside the quotation monad @Q@
+constitutes the core functionality of Template Haskell. However,
 constructing object programs in terms of their abstract syntax trees
 is quite verbose and leads to clumsy meta programs. Therefore the
 Template Haskell API also provides two further interfaces to build
@@ -320,8 +318,8 @@ construction functions:
 Using quotation brackets, writing the same meta program can be
 abbreviated much further as:
 
-> genId' :: Q Dec
-> genId' = [| \x -> x |]
+< genId' :: Q Dec
+< genId' = [| \x -> x |]
 
 Quotation brackets quote regular Haskell code as the corresponding
 object program fragments inside the @Q@ monad. There are quotation
@@ -462,8 +460,8 @@ representing potentially erroneous values, lists, and binary trees,
 respectively:
 
 > data Result e a = Err e | Ok a
-> data List    a = Nil | Cons a (List a)
-> data Tree    a = Leaf a | Node (Tree a) a (Tree a)
+> data List     a = Nil | Cons a (List a)
+> data Tree     a = Leaf a | Node (Tree a) a (Tree a)
 
 Moreover, suppose we want to derive @Functor@ instances for all of
 these types. Deriving these instances manually is straightforward, but
@@ -723,10 +721,10 @@ expressions can be defined as follows:
 
 That is, formally a @QuasiQuoter@ consists of four parsers,
 
-> quoteExp  :: String -> Q Exp
-> quotePat  :: String -> Q Pat
-> quoteType :: String -> Q Type
-> quoteDec  :: String -> Q Dec
+< quoteExp  :: String -> Q Exp
+< quotePat  :: String -> Q Pat
+< quoteType :: String -> Q Type
+< quoteDec  :: String -> Q Dec
 
 to parse raw strings of the embedded language into the different
 categories of Haskell syntax. In this example, however, we only want
@@ -741,15 +739,6 @@ value. Second, we encode this @RegExp@ value as a Haskell expression
 in Template Haskell's @Exp@ datatype. It is the second step that
 allows us to interpolate variables (or even code) from the Haskell
 host language into the EDSL for regular expressions.
-
-%% The second step seems redundant at first: Why should the @RegExp@
-%% value be encoded as a Template Haskell object program in the first
-%% place when it is spliced in as a @RegExp@ value again afterwards due
-%% to a quasi quote |[regex|| .. ||]|? However, encoding a @RegExp@ as a
-%% Template Haskell object program allows accessing the Template Haskell
-%% functionality when constructing object programs. It enables us (e.g.)
-%% to interpolate values (or even code) from the Haskell host language
-%% when processing the EDSL of regular expressions.
 
 Parsing a raw regular expression into a corresponding @RegExp@ value
 is a routine task using (e.g.) the \texttt{parsec} library:
@@ -937,21 +926,20 @@ templates.
 
 \section{Template Haskell's Implementation in GHC}
 
-The Template Haskell functionality from the previous section is
-implemented by a public Haskell library as well as a language
-extension to GHC. The Template Haskell library, called
-\texttt{template-haskell}, defines the user-facing API as described in
-the previous section. It provides the main module
+The Template Haskell functionality is implemented by a public Haskell
+library as well as a language extension to GHC. The Template Haskell
+library, called \texttt{template-haskell}, defines the user-facing API
+as described in the previous section. It provides the main module
 @Language.Haskell.TH@, which is based on sub modules
-@Language.Haskell.TH.{Syntax, Lib, Ppr, Quote}@, respectively.
+\texttt{Language.Haskell.TH.\{Syntax, Lib, Ppr, Quote\}}, respectively.
 
-Module @Language.Haskell.TH.Syntax@ (mainly) defines the algebraic
-data types, the quotation monad @Q@\footnote{The @Q@ monad is
-  essentially a wrapper on top of GHC's internal typechecker monad
-  @TcM@. This is accomplished without depending on GHC by using a
-  @Quasi@ typeclass for indirection. The trick is described in
-  \cite{th2}, \S 10 ``Functoring the Q monad''.}, and the @Lift@
-typeclass for representing Haskell programs as data; module
+Module @Language.Haskell.TH.Syntax@ defines the algebraic data types,
+the quotation monad @Q@\footnote{The @Q@ monad is essentially a
+  wrapper on top of GHC's internal typechecker monad @TcM@. This is
+  accomplished without depending on GHC by using a @Quasi@ typeclass
+  for indirection. The trick is described in \cite{th2}, \S 10
+  ``Functoring the Q monad''.}, and the @Lift@ typeclass for
+representing Haskell programs as data; module
 @Language.Haskell.TH.Lib@ defines the corresponding syntax
 construction functions. Furthermore, module @Language.Haskell.TH.Ppr@
 provides a pretty printer for displaying Template Haskell object
@@ -964,7 +952,7 @@ Inside GHC, Template Haskell is implemented by the
 purpose is (a) to run meta programs at compile-time through splice
 operator |$(..)|; (b) to represent Haskell code as data by enclosing
 it in quotation brackets |[|| .. ||]|; and (c) to provide an interface
-for reification. The functionality is mainly implemented by modules
+for reification. The functionality is (mainly) implemented by modules
 \texttt{rename/rnSplice.hs}, \texttt{typecheck/TcSplice.hs},
 \texttt{deSugar/DsMeta.hs}, and \texttt{hsSyn/Convert.hs},
 respectively. Each GHC module is invoked at a different stage during
@@ -974,14 +962,14 @@ programming facilities.
 \todo{make a better connection between the points (a) - (c) and their
   implementation through the above modules}
 
-In the following, I briefly highlight how the above features (a) to
-(c) fall into the big picture of GHC's multi-step compilation process
-of a module @M@. Simon Marlow and Simon Peyton Jones provide an
-excellent general and more thorough overview of GHC in ``The Glasgow
-Haskell Compiler'' in~\cite{aosa}.
+In the following, I highlight how the above features (a) to (c) fall
+into the big picture of GHC's compilation process and how each feature
+relates to the mentioned GHC modules. Simon Marlow and Simon Peyton
+Jones provide an excellent general and more thorough overview of GHC
+in ``The Glasgow Haskell Compiler''~\cite{aosa}.
 
 To compile a Haskell module @M@ that uses the @TemplateHaskell@
-extension, GHC first lexes and parses @M@'s Haskell surface syntax
+extension, GHC first lexes and parses @M@'s concrete Haskell syntax
 into abstract Haskell syntax. Next, GHC's renamer processes @M@'s
 abstract syntax, resolving the scopes of the module's identifiers and
 connecting them to their binding sites. As part of renaming, meta
