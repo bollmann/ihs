@@ -8,6 +8,7 @@
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{textcomp}
+\usepackage{hyperref}
 
 \title{Exploring and Extending Template Haskell \\ An Experience Report}
 
@@ -28,25 +29,6 @@
   \texttt{PatternSynonyms} language extension.}
 
 \section{Introduction}
-
-%% The central power of Template Haskell lies in the construction of meta
-%% programs, that is, programs which construct other programs due to
-%% their execution at compile time. To avoid confusion in the sequel, we
-%% distinguish between meta programs and the programs they compute. Meta
-%% programs are programs that take as their input data other programs,
-%% which they manipulate by some algorithmic means. Object programs, on
-%% the other hand, are the programs that act like data to the meta
-%% programs, i.e., the programs being manipulated by and resulting as
-  %% output from the meta programs.
-
-%% Compile-time meta programming has many use cases. For example, it
-%% empowers a user to write many, syntactically different, object
-%% programs all at once by means of a single meta program. All that is
-%% needed is a uniform, algorithmic description to create the different
-%% object programs. And the meta program then precisely implements the
-%% algorithm to compute all the different object programs as its
-%% result. This proves useful for example to avoid writing the same
-  %% repetitive, boilerplate code over and over again.
 
 \todo{Finish me!}
 
@@ -96,7 +78,15 @@ languages from the @shakespeare@ library use Template Haskell at their
 core. They expose succinct domain specific languages to build HTML,
 CSS, and Javascript code inside of a Haskell based web application.
 
-\todo{finish me! Write about the organization of the following sections.}
+The remainder of this report is organized as follows. Section 2
+reviews Template Haskell's functionality in an example-driven
+manner. Section 3 then outlines the implementation of Template Haskell
+in GHC. Section 4 further describes my experience of extending
+Template Haskell to also support the \texttt{PatternSynonyms}
+extension. The report concludes with a personal review of this
+independent study.
+
+\todo{finish me!}
 
 \todo[inline]{
   - What is Template Haskell? How did it come about? (Template Haskell
@@ -107,6 +97,7 @@ to solve real-world problems (Yesod's Shakespearean languages!)?
 necessary. A LOT (see reverse dependencies) of packages depend on it.}
 
 \section{Learning Template Haskell by Examples}
+\label{sec:th-review}
 
 In this section, I will review the Template Haskell functionality as
 introduced in \cite{th1, th2, qq} to write meta programs. In the
@@ -1174,7 +1165,7 @@ hand side) variables. However, from a programmer's perspective a
 record pattern synonym defines only its record selector
 names. Correspondingly, Richard Eisenberg wanted to expose the
 intuitive API inside Template Haskell, even though the Haskell AST for
-record pattern synonym's internally adds more structure. To expose the
+record pattern synonyms internally adds more structure. To expose the
 succinct TH API, I had to think more carefully when converting pattern
 synonyms in real Haskell ASTs to their corresponding Template Haskell
 ASTs and vice versa in \texttt{deSugar/DsMeta.hs} and
@@ -1211,16 +1202,51 @@ in selectors anyways, thus dissolving the link between selector
 binders and their usage sites. As it turned out, not only record
 pattern synonym selectors were affected, but in fact any datatype's
 record selectors. Hence, fixing the issue not only solved my task of
-supporting pattern synonyms in Template Haskell, but also resolved the
-regression \#11809 in GHC~\cite{patsyns-bugfix}.
+supporting pattern synonyms in Template Haskell, but also resolved a
+regression in GHC 8.0~\cite{patsyns-bugfix}.
 
 To test the ``pattern synonyms'' patch, I wrote a unit test suite
 exercising quoting, splicing, and reification of various pattern
-synonyms. Part of the unit tests were reused and originally come from
+synonyms. Parts of the unit tests were reused and originally come from
 Rik Steenkamp's patch ``improve printing of pattern
 synonyms''~\cite{rdragon-patch}.
 
 \section{Conclusion}
+
+In the course of the last four months, I've explored meta programming
+in GHC's Template Haskell extension. To learn about Template Haskell,
+I first dived into the underlying theory by
+reading~\cite{th1,th2,th3,qq,aosa,yesod,shakespeare}. I then fostered
+my understanding of meta programming by developing a couple of toy
+example programs show-casing the features of Template Haskell. Many
+examples have been described in Section~\ref{sec:th-review}, a few
+more examples can be found at
+\url{http://www.github.com/bollmann/th-samples.git}. After getting a
+basic understanding of meta programming and the functionality offered
+by Template Haskell, I then started studying Template Haskell's
+implementation, i.e., the \texttt{template-haskell} library as well as
+the \texttt{TemplateHaskell} GHC extension. To further solidify my
+understanding besides reading the source code, I started looking into
+current issues with Template Haskell as mentioned in the GHC bug
+tracker. In particular, I investigated
+tickets~\cite{th-ticket1,th-ticket2,th-ticket3}, all of which turned
+out to be already fixed, so that I could close them easily after
+adding corresponding regression tests. After getting acquainted to
+submitting patches to GHC's source tree by resolving these (trivial)
+tickets, I started tackling my bigger task: to also support GHC's
+\texttt{PatternSynonym} extension inside of Template Haskell. This
+task's challenges are described in detail in Section~\ref{sec:patsyns}
+and took around two months to complete. During this time I
+communicated extensively with Richard Eisenberg, Matthew Pickering,
+and Ben Gamari, who reviewed my patches and improved them through
+their comments. My gratitude goes particularly to Richard Eisenberg,
+who
+
+
+, who reviewed the
+initial drafts of my patch and suggested many improvements at
+different places.
+
 
 \bibliographystyle{alpha} \bibliography{refs}
 
