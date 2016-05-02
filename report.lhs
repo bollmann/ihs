@@ -1088,31 +1088,33 @@ program is performed to yield a data value representing the computed
 TH object program. This TH object program is finally spliced in as the
 result of splice |$(mp)| as real Haskell code. The conversion from
 Template Haskell syntax to real Haskell syntax is done by module
-\texttt{hsSyn/Convert.hs}. Invoking all these steps concludes the
-evaluation of meta program |mp| as part of the renaming pass.
+\texttt{hsSyn/Convert.hs}. All these steps concludes the evaluation of
+meta program |mp| as part of the renaming pass.
 
 \section{Adding Pattern Synonyms Support to Template Haskell}
 
 During this independent study, I added support for the recently added
-\texttt{PatternSynonyms} extension to Template Haskell. Pattern
-Synonyms were introduced in GHC 7.8 and allow to give short names
-(i.e., synonyms) to more complicated patterns. These synonyms can then
-be used to match against the underlying patterns. Moreover, in certain
+\texttt{PatternSynonyms} extension to Template Haskell. The details of
+this patch are discussed at~\cite{patsyns-patch}. Pattern Synonyms
+were introduced in GHC 7.8 and allow to give short names (i.e.,
+synonyms) to more complicated patterns. These synonyms can then be
+used to match against the underlying patterns. Moreover, in many
 cases, the succinct pattern synonym names can also be used as
 ``smart'' constructors to build the represented, more involved
-patterns in an expression context. Thus, pattern synonyms serve as a
-convenient interface to pattern match against complex patterns and to
-build lengthy expressions in a succinct manner.
+patterns in an expression context.
 
 \todo{add motivating pattern synonyms example here? If so, which one?}
 
 In general, pattern synonyms come in three flavors: unidirectional,
 implicitly bidirectional, and explicitly bidirectional pattern
-synonyms. They are explained in detail in GHC's users manual \todo{add
+synonyms. Each flavor can further come either as a normal prefix,
+infix, or a record pattern synonym. The latter exposes record
+selectors to work on the underlying pattern. The different pattern
+synonym forms are explained in detail in GHC's users manual \todo{add
   citation?! Or explain the differences!}.
 
-To add pattern synonym support to Template Haskell, I mainly had to
-extend the public TH API as well as the GHC internal modules
+To add pattern synonym support to Template Haskell, I had to extend
+the TH library as well as the GHC internal modules
 \texttt{hsSyn/Convert.hs}, \texttt{deSugar/DsMeta.hs}, and
 \texttt{typecheck/TcSplice.hs}. In Template Haskell's public library,
 I added syntax constructors as well as corresponding syntax
@@ -1120,7 +1122,7 @@ construction functions to represent pattern synonyms inside TH object
 programs. Moreover, I changed the reification datatype to also take
 pattern synonyms into account.
 
-Next, inside GHC, I modified modules \texttt{deSugar/DsMeta.hs} and
+Inside GHC, I modified modules \texttt{deSugar/DsMeta.hs} and
 \texttt{hsSyn/Convert.hs} to also convert between Haskell's pattern
 synonyms and their representation in Template Haskell. In particular,
 I extended \texttt{deSugar/DsMeta.hs} to desugar Haskell's pattern
@@ -1140,22 +1142,21 @@ was then in the detail. In particular, after completing my first
 implementation draft, I faced two major problems, which took me around
 6 more weeks (on and off) to fully resolve.
 
-The first problem concerned the types of pattern synonyms. In general,
-a pattern synonym's type signature is of the following form:
+The first problem concerned the peculiar types of pattern synonyms. In
+general, a pattern synonym's type signature is of the following form:
 
-\[
-\forall a_1 \dots a_n. \forall b_1 \dots b_m. \; \; CReq
-\Rightarrow CProv \Rightarrow t_1
-\rightarrow t_2 \rightarrow \dots \rightarrow t_n \rightarrow t
-\]
+< pattern P :: forall a1 .. an. CReq
+<           => forall b1 .. bm. CProv
+<           => t1 -> t2 -> .. -> tn -> t
+< pattern P x1 x2 .. xn = <some-pattern>
 
 That is, a pattern synonym's type comes with two forall quantifiers
-and two constraint contexts. The first \(\forall a_1 \dots a_n\)
-quantifies over all universially bound type variables and its context
-\(CReq\) denotes these type variables' required constraints. The
-second \(\forall b_1 \dots b_m\) refers to the pattern synonym's
-existentially bound type variables and the context \(CProv\) refers to
-their provided constraints.
+and two constraint contexts. The first @forall@ quantifier quantifies
+over all universially bound type variables and its context @CReq@
+denotes these type variables' required constraints. The second
+@forall@ quantifier refers to the pattern synonym's existentially
+bound type variables and its context @CProv@ refers to those
+variable's provided constraints.
 
 Due to their unusual type shapes, I couldn't as easily reuse already
 existing machinery for the reification of Haskell types (in
@@ -1167,41 +1168,57 @@ Template Haskell syntax to real Haskell syntax.
 
 After resolving this problem, a second major issue concerned the
 implementation of record pattern synonyms. Internally in GHC, record
-pattern synonyms are modeled with both names for the record selectors
-and (hidden) names for the pattern synonym's internal (right hand
-side) variables. However, from a user's perspective a record pattern
-synonym defines only its record selector names. Correspondingly,
-Richard Eisenberg wanted to expose this intuitive API inside Template
-Haskell, even though the Haskell AST for record pattern synonym's
-internally adds more structure. To achieve this design, I had to
-essentially forget a record pattern synonym's local names when
-converting them to Template Haskell syntax and later, when converting
-them back to Haskell syntax, regenerate these names again from
-scratch. Doing this (slightly) more involved conversion between
-Haskell's abstract syntax and Template Haskell syntax hadn't been
-needed before, so I had to come up with a design and the machinery
-implementing it. In the end, the solution turned out to be quite small
-code-wise, but accomplishing it required me to understand the TH
-implementation much better than I had before.
+pattern synonyms are modeled with both names for the public record
+selectors and (hidden) names for the pattern synonym's internal (right
+hand side) variables. However, from a programmer's perspective a
+record pattern synonym defines only its record selector
+names. Correspondingly, Richard Eisenberg wanted to expose the
+intuitive API inside Template Haskell, even though the Haskell AST for
+record pattern synonym's internally adds more structure. To expose the
+succinct TH API, I had to think more carefully when converting pattern
+synonyms in real Haskell ASTs to their corresponding Template Haskell
+ASTs and vice versa in \texttt{deSugar/DsMeta.hs} and
+\texttt{hsSyn/Convert.hs}, respectively. Essentially a record pattern
+synonym's local names had to be forgotten when desugaring them in
+\texttt{deSugar/DsMeta.hs} and later, when converting them back to
+Haskell syntax in \texttt{hsSyn/Convert.hs} these names had to be
+regenerated from scratch. Doing this (slightly) more involved
+conversion between Haskell's abstract syntax and Template Haskell
+syntax hadn't been needed before, so I had to come up with a design
+and the machinery implementing it. In the end, the solution turned out
+to be quite small code-wise, but accomplishing it required me to
+understand the TH implementation and its various interactions much
+better than I had before.
 
-However, in the conceived design, quoting and splicing record pattern
-synonyms did not work as expected initially. Learning about GHC
-debugging, I noticed the problem by enabling debug flags
-@-ddump-splices@, @-dddump-rn@, and @-ddump-ds@. Splicing in Template
-Haskell record pattern synonyms as Haskell code turned out to break
-the link between a record pattern synonym's selector functions and
-their usage sites. In particular, after running a meta program that
-spliced in record pattern synonyms the links between the selector
-binders and their usage sites were dissolved. Digging further into GHC
-debugging by using \texttt{utils/Outputable.hs}'s trace and debug
-utilities to put custom trace messages into (pure or impure) Haskell
-code, I finally rooted the cause for the incorrect name resolution of
-spliced in Template Haskell code: The recently added GHC extension
-\texttt{DuplicateRecordFields} wasn't compatible with Template
-Haskell. In fact, as it turned out, not only record pattern synonym
-selectors, but record selectors of data types in general, caused an
-incorrect scope resolution after splicing them in with Template
-Haskell.
+What made the above problem particularly difficult to solve was an
+unrelated GHC bug. In particular, once I had added support for record
+pattern synonyms, I noticed that quoting and splicing did not work as
+expected. Learning about GHC debugging and turning on the debug flags
+@-ddump-splices@, @-dddump-rn@, and @-ddump-ds@, revealed the problem:
+splicing in Template Haskell record pattern synonyms as Haskell code
+somehow broke the link between a record pattern synonym's selector
+binder and this selector's usage sites. Digging further into GHC
+debugging, I used the trace and debug utilities in
+\texttt{utils/Outputable.hs} to put custom trace messages into GHC's
+renamer code base. This finally rooted the cause for the incorrect
+name resolution of the spliced in pattern synonyms: The newly added
+GHC extension \texttt{DuplicateRecordFields} hadn't been made
+compatible with Template Haskell. In particular, one invariant of
+Template Haskell says that spliced in object programs are already
+renamer resolved. However, the \texttt{DuplicateRecordFields}
+extension did not respect this invariant and sought to rename spliced
+in selectors anyways, thus dissolving the link between selector
+binders and their usage sites. As it turned out, not only record
+pattern synonym selectors were affected, but in fact any datatype's
+record selectors. Hence, fixing the issue not only solved my task of
+supporting pattern synonyms in Template Haskell, but also resolved the
+regression \#11809 in GHC~\cite{patsyns-bugfix}.
+
+To test the ``pattern synonyms'' patch, I wrote a unit test suite
+exercising quoting, splicing, and reification of various pattern
+synonyms. Part of the unit tests were reused and originally come from
+Rik Steenkamp's patch ``improve printing of pattern
+synonyms''~\cite{rdragon-patch}.
 
 \section{Conclusion}
 
