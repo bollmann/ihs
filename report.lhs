@@ -41,10 +41,10 @@ results of their execution.
 Template Haskell was conceived by Tim Sheard and Simon Peyton Jones in
 \cite{th1} by drawing on the ideas of Lisp macros, but in the typed
 setting of Haskell. Since then, the original implementation has
-evolved quite a bit \cite{th2, qq, th3}. Most notably, in 2007
-Geoffrey Mainland added support for quasi quoting \cite{qq}, which
-makes the embedding of domain specific languages into the Haskell host
-language much easier.
+evolved quite a bit \cite{th2, th3}. Most notably, in 2007 Geoffrey
+Mainland added support for quasi quoting \cite{qq}, which makes the
+embedding of domain specific languages into the Haskell host language
+much easier.
 
 As it exists today, Template Haskell has two main areas of
 application: Haskell code generation at compile-time and facilitating
@@ -79,7 +79,7 @@ core. They expose succinct domain specific languages to build HTML,
 CSS, and Javascript code inside of a Haskell based web application.
 
 The remainder of this report is organized as follows. Section 2
-reviews Template Haskell's functionality in an example-driven
+reviews Template Haskell's features in an example-driven
 manner. Section 3 then outlines the implementation of Template Haskell
 in GHC. Section 4 further describes my experience of extending
 Template Haskell to also support the \texttt{PatternSynonyms}
@@ -743,7 +743,7 @@ is a routine task using (e.g.) the \texttt{parsec} library:
 >   charclass  = fmap (Char . Set.fromList) $
 >                  P.char '[' *> content <* P.char ']'
 >   content    = try (concat <$> many1 range)
->                    <|> many1 (noneOf specials)
+>                  <|> many1 (noneOf specials)
 >   range      = enumFromTo
 >                  <$> (noneOf specials <* P.char '-')
 >                  <*> noneOf specials
@@ -1083,6 +1083,7 @@ Template Haskell syntax to real Haskell syntax is done by module
 meta program |mp| as part of the renaming pass.
 
 \section{Adding Pattern Synonyms Support to Template Haskell}
+\label{sec:patsyns}
 
 During this independent study, I added support for the recently added
 \texttt{PatternSynonyms} extension to Template Haskell. The details of
@@ -1216,37 +1217,49 @@ synonyms''~\cite{rdragon-patch}.
 In the course of the last four months, I've explored meta programming
 in GHC's Template Haskell extension. To learn about Template Haskell,
 I first dived into the underlying theory by
-reading~\cite{th1,th2,th3,qq,aosa,yesod,shakespeare}. I then fostered
-my understanding of meta programming by developing a couple of toy
-example programs show-casing the features of Template Haskell. Many
+reading~\cite{th1,th2,th3,qq,aosa,yesod,shakespeare}. Second, I
+fostered my understanding of meta programming by developing a couple
+of toy programs show-casing the features of Template Haskell. Many
 examples have been described in Section~\ref{sec:th-review}, a few
 more examples can be found at
 \url{http://www.github.com/bollmann/th-samples.git}. After getting a
 basic understanding of meta programming and the functionality offered
 by Template Haskell, I then started studying Template Haskell's
 implementation, i.e., the \texttt{template-haskell} library as well as
-the \texttt{TemplateHaskell} GHC extension. To further solidify my
-understanding besides reading the source code, I started looking into
-current issues with Template Haskell as mentioned in the GHC bug
-tracker. In particular, I investigated
-tickets~\cite{th-ticket1,th-ticket2,th-ticket3}, all of which turned
-out to be already fixed, so that I could close them easily after
-adding corresponding regression tests. After getting acquainted to
-submitting patches to GHC's source tree by resolving these (trivial)
-tickets, I started tackling my bigger task: to also support GHC's
+the \texttt{TemplateHaskell} GHC extension. Besides reading the source
+code, I also began looking into current issues with Template Haskell
+as mentioned in the GHC bug tracker. In particular, I investigated
+tickets \texttt{\#9022} and \texttt{\#11145}, both of which turned out
+to be already fixed, so that I could close them easily after adding
+corresponding regression tests. Unfortunately, investigating other
+tickets \texttt{\#10707}, and \texttt{\#9693} wasn't as successful and
+I got overwhelmed by GHC's code base while trying to understand
+them. Nonetheless looking into these first tickets helped me
+familiarize myself with GHC's development process, and with submitting
+patches to GHC's review tool Phabricator.
+
+Next, I started tackling my bigger task: to also support GHC's
 \texttt{PatternSynonym} extension inside of Template Haskell. This
-task's challenges are described in detail in Section~\ref{sec:patsyns}
-and took around two months to complete. During this time I
-communicated extensively with Richard Eisenberg, Matthew Pickering,
-and Ben Gamari, who reviewed my patches and improved them through
-their comments. My gratitude goes particularly to Richard Eisenberg,
-who
+task and its challenges are described in detail in
+Section~\ref{sec:patsyns} and took around two months to
+complete. During this time I communicated extensively with Richard
+Eisenberg, Matthew Pickering, and Ben Gamari, who reviewed and
+commented on my patches. My gratitude goes particularly to Richard
+Eisenberg, who has relentlessly given feedback on all former drafts of
+my patch and whose comments have improved the quality of the final
+result significantly! In fact, I think about half of the total time
+was spent discussing design choices (or strange problems) on
+Phabricator.
 
-
-, who reviewed the
-initial drafts of my patch and suggested many improvements at
-different places.
-
+Concluding, I think I've learned a whole lot of new things about
+Haskell during this independent study! Besides studying Haskell's meta
+programming using Template Haskell, for the first time I've really
+gotten exposed to big Haskell systems, most notably parts of the
+Glasgow Haskell Compiler and the \texttt{template-haskell}
+library. This exposure has in particular let me to \textit{read}
+significant chunks of Haskell code and thus seeing common Haskell
+paradigms like Applicatives, Monads, Phantom Types, etc. elegantly
+solve the problems at hand.
 
 \bibliographystyle{alpha} \bibliography{refs}
 
