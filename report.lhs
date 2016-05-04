@@ -30,8 +30,6 @@
 
 \section{Introduction}
 
-\todo{Finish me!}
-
 Template Haskell (TH) is the standard framework for doing type-safe,
 compile-time meta programming in the Glasgow Haskell Compiler
 (GHC). It allows writing Haskell meta programs, which are typechecked
@@ -85,16 +83,6 @@ in GHC. Section 4 further describes my experience of extending
 Template Haskell to also support the \texttt{PatternSynonyms}
 extension. The report concludes with a personal review of this
 independent study.
-
-\todo{finish me!}
-
-\todo[inline]{
-  - What is Template Haskell? How did it come about? (Template Haskell
-Paper1, Paper2, Quasi-Quote paper), Adoption of TH in real libraries
-to solve real-world problems (Yesod's Shakespearean languages!)?
-
-- Even though its called the ugly under the HS extensions, it is the
-necessary. A LOT (see reverse dependencies) of packages depend on it.}
 
 \section{Learning Template Haskell by Examples}
 \label{sec:th-review}
@@ -771,7 +759,7 @@ Haskell host language, which we apply in a left associative manner to
 each other. Doing this enables interpolation of Haskell identifiers or
 even simple forms of Haskell expressions into our EDSL of regular
 expressions as shown by the regexes |validDotComMail| and
-|validDotComMail'|, respectively.
+|validDotComMail'| above.
 
 > instance Lift a => Lift (Set a) where
 >   lift set = appE (varE `Set.fromList) (lift (Set.toList set))
@@ -792,12 +780,12 @@ expressions as shown by the regexes |validDotComMail| and
 These two steps constitute the conversion of raw string regular
 expressions into Template Haskell expressions inside of the |compile|
 function and define the @regex@ quasiquoter. Whenever we write a quasi
-quote like |[regex|| .. ||]| instead of a Haskell expression,
-|regex|'s parser |quoteExp| converts the regex EDSL into Template
-Haskell object code and splices in the result as a wellformed @RegExp@
-value. This example shows how Template Haskell and quasi quotes can be
-used to define a type-safe, domain specific language for regular
-expressions.
+quote like |[regex|| .. ||]| in a Haskell expression context,
+|regex|'s parser |quoteExp| converts the regex EDSL into a Template
+Haskell expression @Exp@ and splices in the result as a wellformed
+@RegExp@ value. This example shows how Template Haskell and quasi
+quotes can be used to define a type-safe, domain specific language for
+regular expressions.
 
 In much the same manner, Template Haskell and quasi quotes are used in
 Michael Snoyman's \texttt{shakespeare}
@@ -805,7 +793,7 @@ library~\cite{shakespeare,shakespeare-lib}. It defines embedded
 templating languages for working with the internet's web languages
 from within a Haskell web application. In particular, the
 \texttt{shakespeare} library provides the template languages
-\texttt{Hamlet}, \texttt{Cassius}, and \texttt{Julius} for writing
+\textit{Hamlet}, \textit{Cassius}, and \textit{Julius} for writing
 embedded HTML, CSS, and Javascript code, respectively. All three
 templating languages internally work quite similarly to the previous
 example's EDSL for regular expressions: quasi quotes allow one to
@@ -814,8 +802,8 @@ modified) syntax inside of Haskell. Moreover, identifiers from the
 Haskell host language as well as code fragments can be interpolated
 into the template languages at compile-time. In the remainder we will
 briefly show-case the \texttt{shakespeare} library's templating
-language \texttt{Hamlet} for creating HTML documents; the other
-templating languages \texttt{Cassius} and \texttt{Julius} are similar.
+language Hamlet for creating HTML documents; the other templating
+languages Cassius and Julius are similar.
 
 To create and output a simple web page from inside a Haskell
 application, the following is enough:
@@ -853,23 +841,23 @@ application, the following is enough:
 >   webPage "Hello Shakespeare!" "Hello World!" mkUrls
 
 Running this Haskell program, outputs an HTML page as specified by the
-\texttt{Hamlet} templating language, embedded through quasi quote
-|[hamlet|| .. ||]| in function |webPage|. \texttt{Hamlet} closely
+Hamlet templating language, embedded through quasi quote
+|[hamlet|| .. ||]| in function |webPage|. Hamlet closely
 resembles real HTML syntax, but is even more terse: instead of a
-closing HTML tag, \texttt{Hamlet} uses indentation to indicate the
-span of the tag. Furthermore, \texttt{Hamlet} allows to interpolate
+closing HTML tag, Hamlet uses indentation to indicate the
+span of the tag. Furthermore, Hamlet allows to interpolate
 code or identifiers from the Haskell host language when creating an
-HTML template. Interpolation of Haskell code into \texttt{Hamlet} is
+HTML template. Interpolation of Haskell code into Hamlet is
 done by writing |#{ .. }|. In the above example, the HTML page's title
 and content are interpolated from Haskell identifiers. Note
 particularly how in the webpage's title we uppercase the interpolated
 title using Haskell's |Text.toUpper| function \textit{inside} of the
-\texttt{Hamlet} language.
+Hamlet language.
 
-In addition to this standard interpolation, \texttt{Hamlet} can also
+In addition to this standard interpolation, Hamlet can also
 interpolate links by writing |@{..}|. These links are specified as
 values of the |Page| datatype inside the template and the |mkUrls|
-render function translates them to real URLs later. \texttt{Hamlet}'s
+render function translates them to real URLs later. Hamlet's
 URL interpolation has commonly be phrased as creating ``type-safe
 URLs''. One reason is that, just like with normal variable
 interpolation, all interpolated links have to exist and be type
@@ -905,15 +893,17 @@ fact forces) us to update all locations in the code that used the old
 |Github| link to now use the new |External Github| (as well as
 optionally the |External Haskell|, etc.) links.
 
-However, the main reason for calling \texttt{Hamlet}'s URLs type-safe
-is in interplay with the web framework Yesod. \todo{shall we mention
-  this (and in this case elaborate it with two more sentences)??}
+%% However, the main reason for calling Hamlet's URLs type-safe is in
+%% interplay with the web framework Yesod. On top of Hamlet, Yesod
+%% provides yet another DSL for assigning URLs to their corresponding
+%% webpage handlers. \todo{shall we mention this (and in this case
+%%   elaborate it with two more sentences)??}
 
-Finally, \texttt{Hamlet} allows to use some control constructs like if
+Finally, Hamlet allows to use some control constructs like if
 conditionals, for loops, and let bindings to embed basic business
 logic into a webpage's template. See \cite{shakespeare,yesod} for a
 gentle (and much more in-depth) introduction to shakespearean
-templates.
+templates and Yesod.
 
 \section{Template Haskell's Implementation in GHC}
 
@@ -925,11 +915,7 @@ as described in the previous section. It provides the main module
 \texttt{Language.Haskell.TH.\{Syntax, Lib, Ppr, Quote\}}, respectively.
 
 Module @Language.Haskell.TH.Syntax@ defines the algebraic data types,
-the quotation monad @Q@\footnote{The @Q@ monad is essentially a
-  wrapper on top of GHC's internal typechecker monad @TcM@. This is
-  accomplished without depending on GHC by using a @Quasi@ typeclass
-  for indirection. The trick is described in \cite{th2}, \S 10
-  ``Functoring the Q monad''.}, and the @Lift@ typeclass for
+the quotation monad @Q@, and the @Lift@ typeclass for
 representing Haskell programs as data; module
 @Language.Haskell.TH.Lib@ defines the corresponding syntax
 construction functions. Furthermore, module @Language.Haskell.TH.Ppr@
@@ -992,15 +978,15 @@ run. And typechecking a splice's code coming from the very module
 currently being renamed would require evaluation of splices to be run
 after typechecking (as in fact was done in the original Template
 Haskell implementation \cite{th1}). However, postponing the evaluation
-of splices to after the typechecking phase bears other problems, most
-dominantly how to rename the identifiers brought into scope by a
-splice's execution. Hence, until today the stage restriction has
-persisted in the Glasgow Haskell Compiler.
+of splices to after the typechecking phase bears other problems, for
+example how to rename new identifiers brought into scope by a splice's
+execution. Hence, until today the stage restriction has persisted in
+the Glasgow Haskell Compiler.
 
 After renaming module @M@, typechecking happens. It ensures that the
 composition of @M@'s terms is allowed by its types. With regard to
 Template Haskell, the typechecking process is quite simple. Meta
-programs are checked in the same manner as normal Haskell code. Their
+programs are checked in the same manner as regular Haskell code. Their
 only distinctive characteristic is to construct a Template Haskell
 object program and thus to be of type @Q Exp@, (or @Q [Dec]@, or the
 like). While this ensures that a Haskell meta program in fact builds
@@ -1011,8 +997,8 @@ untyped, where we don't know whether a built TH expression of type,
 say @Exp@, is actually type-correct. To ensure the type-safety of
 compile-time generated object programs, these are type checked after
 being spliced in as Haskell code. In particular, the spliced in result
-programs of all previously in the renamer pass executed meta programs
-are now rechecked from scratch.
+programs of all previously during renaming executed meta programs are
+now rechecked from scratch.
 
 Interestingly, the contents of quotation brackets are \textit{not}
 typechecked except for ensuring that embedded splices (i.e., embedded
@@ -1032,9 +1018,14 @@ after having been run and spliced in as Haskell code.
 
 Finally, it is the typechecking pass that provides Template Haskell's
 reification feature (c). Using the @Q@ monad's |reify| function in
-essence means interacting with GHC's typechecker monad @TcM@. As such,
-querying an identifier's type, a typeclass' instances, and other
-compile-time information by means of |reify| becomes possible.
+essence means interacting with GHC's typechecker monad
+@TcM@\footnote{The @Q@ monad is essentially a wrapper on top of GHC's
+  internal typechecker monad @TcM@. This is accomplished without
+  depending on GHC by using a @Quasi@ typeclass for indirection. The
+  trick is described in \cite{th2}, \S 10 ``Functoring the Q
+  monad''.}. As such, querying an identifier's type, a typeclass'
+instances, and other compile-time information by means of |reify|
+becomes possible.
 
 After GHC's typechecking pass, desugaring of module @M@'s Haskell code
 takes place. The desugaring consists of multiple steps in which the
@@ -1079,7 +1070,7 @@ program is performed to yield a data value representing the computed
 TH object program. This TH object program is finally spliced in as the
 result of splice |$(mp)| as real Haskell code. The conversion from
 Template Haskell syntax to real Haskell syntax is done by module
-\texttt{hsSyn/Convert.hs}. All these steps concludes the evaluation of
+\texttt{hsSyn/Convert.hs}. All these steps conclude the evaluation of
 meta program |mp| as part of the renaming pass.
 
 \section{Adding Pattern Synonyms Support to Template Haskell}
@@ -1095,24 +1086,114 @@ cases, the succinct pattern synonym names can also be used as
 ``smart'' constructors to build the represented, more involved
 patterns in an expression context.
 
-\todo{add motivating pattern synonyms example here? If so, which one?}
+Pattern synonyms prove useful (e.g.,) when composing data types from
+smaller building blocks as suggested by Conor
+McBride\footnote{https://www.reddit.com/r/haskell/comments/1kmods/patternsynonyms\_ghc\_trac/cbqk5t2}.
+For example, due to Conor McBride, a binary tree @Tree a@ can be built
+from fixpoints, sums, and products of values as follows:
+
+> newtype K a       x = K a
+> newtype I         x = I x
+> newtype (:+:) f g x = Sum (Either (f x) (g x))
+> newtype (:*:) f g x = Prod (f x, g x)
+>
+> newtype Fix f       = In { unfix :: f (Fix f) }
+>
+> newtype Tree a = Fix (K a :+: (I :*: I))
+
+This composite construction of @Tree a@ nicely reuses existing
+datatypes and their sub structures. However, without pattern synonyms,
+both constructing and pattern matching against values of type @Tree a@
+becomes verbose and cumbersome. For example, making tree an instance
+of @Functor@ is horrendous:
+
+< instance Functor Tree where
+<   fmap f (Tree' tree) = Tree' $ go f tree where
+<     go f (In (Sum (Left (K x))))
+<       = In (Sum (Left (K (f x))))
+<     go f (In (Sum (Right (Prod (I l, I r)))))
+<       = In (Sum (Right (Prod (I (go f l), I (go f r)))))
+
+Similarly, constructing even simple trees is very tedious. To
+alleviate this clumsyness, pattern synonyms can be used to define
+@Leaf@ and @Node@ patterns:
+
+> pattern Leaf x   = In (Sum (Left (K x)))
+> pattern Node l r = In (Sum (Right (Prod (I l, I r))))
+
+These patterns once and for all fix @Tree a@'s generic internal type
+structure and give a shortcut name to pattern match (or construct) a
+tree's node or leaf. Using pattern synonyms, defining a @Tree@s
+@Functor@ instance again becomes easy to read:
+
+> instance Functor Tree where
+>   fmap f (Tree t) = Tree $ go f t where
+>     go f (Node l r) = Node (go f l) (go f r)
+>     go f (Leaf x)   = Leaf (f x)
+
+%% Pattern synonyms prove useful (e.g.,) when using general recursion
+%% schemes for fixpoints of @Functor@s (as suggested by ``sboo'' in
+%% comment 11 of ticket \#8761). For example, suppose we have defined a
+%% simple data type for representing arithmetic expressions:
+
+%% > data Operation = Add | Multiply
+%% > data TreeF a r
+%% >   = LitF a               -- values
+%% >   | VarF String          -- variables
+%% >   | BinF r Operation r   -- compound expressions
+%% >   deriving Functor
+
+%% Taking the fixpoint of the @TreeF a@ functor then gives rise to a
+%% binary tree:
+
+%% > newtype Fix f = In { unFix :: f (Fix f) }
+%% > type Tree a = Fix (TreeF a)
+
+%% Using the fixpoint approach allows to use general recursion schemes
+%% such as catamorphisms and anamorphisms to fold or unfold expression
+%% trees succinctly and without much
+%% boilerplate~\cite{rec-schemes}. However, constructing and pattern
+%% matching against values of type @Tree a@ is quite cumbersome. In
+%% particular, to define the tree for the arithmetic expression @x * 2 +
+%% 1@, we have to write:
+
+%% > exp = In
+%% >   BinF (In (BinF
+%% >              (In (VarF "x"))
+%% >              Multiply
+%% >              (In (ValF 2))))
+%% >        Add
+%% >        (In (ValF 1)))
+
+%% A similar burden is introduced when trying to pattern match against
+%% specific values of arithmetic expressions, since all the @In@
+%% constructors have to be written out.
+
+%% Pattern synonyms relieve this burden by allowing to name the
+%% constructors of the @Tree a@ type succinctly:
+
+%% > pattern Lit x      = In (LitF x)
+%% > pattern Var s      = In (VarF s)
+%% > pattern Bin l op r = In (BinF l op r)
+
+%% Now, arithmetic expression trees can be created and pattern matched
+%% against 
 
 In general, pattern synonyms come in three flavors: unidirectional,
 implicitly bidirectional, and explicitly bidirectional pattern
 synonyms. Each flavor can further come either as a normal prefix,
 infix, or a record pattern synonym. The latter exposes record
 selectors to work on the underlying pattern. The different pattern
-synonym forms are explained in detail in GHC's users manual \todo{add
-  citation?! Or explain the differences!}.
+synonym forms are explained in detail in GHC's users
+manual~\cite{ghc-users-guide}.
 
-To add pattern synonym support to Template Haskell, I had to extend
-the TH library as well as the GHC internal modules
-\texttt{hsSyn/Convert.hs}, \texttt{deSugar/DsMeta.hs}, and
-\texttt{typecheck/TcSplice.hs}. In Template Haskell's public library,
-I added syntax constructors as well as corresponding syntax
-construction functions to represent pattern synonyms inside TH object
-programs. Moreover, I changed the reification datatype to also take
-pattern synonyms into account.
+To add pattern synonyms to Template Haskell, I had to extend the TH
+library as well as the GHC internal modules \texttt{hsSyn/Convert.hs},
+\texttt{deSugar/DsMeta.hs}, and \texttt{typecheck/TcSplice.hs}. In
+Template Haskell's public library, I added syntax constructors as well
+as corresponding syntax construction functions to represent pattern
+synonyms inside TH object programs. Moreover, I changed the
+reification datatype to also take pattern synonyms into account.
 
 Inside GHC, I modified modules \texttt{deSugar/DsMeta.hs} and
 \texttt{hsSyn/Convert.hs} to also convert between Haskell's pattern
@@ -1229,14 +1310,14 @@ implementation, i.e., the \texttt{template-haskell} library as well as
 the \texttt{TemplateHaskell} GHC extension. Besides reading the source
 code, I also began looking into current issues with Template Haskell
 as mentioned in the GHC bug tracker. In particular, I investigated
-tickets \texttt{\#9022} and \texttt{\#11145}, both of which turned out
-to be already fixed, so that I could close them easily after adding
-corresponding regression tests. Unfortunately, investigating other
-tickets \texttt{\#10707}, and \texttt{\#9693} wasn't as successful and
-I got overwhelmed by GHC's code base while trying to understand
-them. Nonetheless looking into these first tickets helped me
-familiarize myself with GHC's development process, and with submitting
-patches to GHC's review tool Phabricator.
+tickets \texttt{\#9022}, \texttt{\#11145}, \texttt{\#10707}, and
+\texttt{\#9693}. The two former tickets turned out to be already
+fixed, so that I could close them easily after adding corresponding
+regression tests; investigating the latter two tickets wasn't as
+successful unfortunately, as I got overwhelmed by GHC's code base
+while trying to understand them. Nonetheless looking into these first
+tickets helped me familiarize myself with GHC's development process,
+and with submitting patches for review on Phabricator.
 
 Next, I started tackling my bigger task: to also support GHC's
 \texttt{PatternSynonym} extension inside of Template Haskell. This
@@ -1245,21 +1326,24 @@ Section~\ref{sec:patsyns} and took around two months to
 complete. During this time I communicated extensively with Richard
 Eisenberg, Matthew Pickering, and Ben Gamari, who reviewed and
 commented on my patches. My gratitude goes particularly to Richard
-Eisenberg, who has relentlessly given feedback on all former drafts of
-my patch and whose comments have improved the quality of the final
-result significantly! In fact, I think about half of the total time
-was spent discussing design choices (or strange problems) on
-Phabricator.
+Eisenberg, who has relentlessly given feedback on the former drafts of
+my patch and whose comments have improved the end quality by a lot. I
+think about a third of the total development time was spent discussing
+design choices (or strange errors) on Phabricator.
 
 Concluding, I think I've learned a whole lot of new things about
 Haskell during this independent study! Besides studying Haskell's meta
-programming using Template Haskell, for the first time I've really
-gotten exposed to big Haskell systems, most notably parts of the
-Glasgow Haskell Compiler and the \texttt{template-haskell}
-library. This exposure has in particular let me to \textit{read}
-significant chunks of Haskell code and thus seeing common Haskell
-paradigms like Applicatives, Monads, Phantom Types, etc. elegantly
-solve the problems at hand.
+programming using Template Haskell, this independent study exposed me
+to big Haskell systems, most notably parts of the Glasgow Haskell
+Compiler and the \texttt{template-haskell} library. This exposure has
+let me \textit{read} significant chunks of Haskell code, permitting me
+to see common Haskell paradigms (like Applicatives, Monads, Phantom
+Types, etc.) elegantly solve the practical problems at hand. Moreover,
+this independent study let me explore various GHC extensions (such as
+\texttt{TemplateHaskell}, \texttt{PatternSynonyms},
+\texttt{ViewPatterns}, \texttt{TypeFamilies}, \texttt{RankNTypes}) for
+the first time. To this end, I think it has enhanced my understanding
+of Haskell greatly!
 
 \bibliographystyle{alpha} \bibliography{refs}
 
