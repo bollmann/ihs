@@ -32,9 +32,9 @@
 
 Template Haskell (TH) is the standard framework for doing type-safe,
 compile-time meta programming in the Glasgow Haskell Compiler
-(GHC). It allows writing Haskell meta programs, which are typechecked
-and run at compile-time, and which produce Haskell programs as the
-results of their execution.
+(GHC). It allows writing Haskell meta programs, which are evaluated at
+compile-time, and which produce Haskell programs as the results of
+their execution.
 
 Template Haskell was conceived by Tim Sheard and Simon Peyton Jones in
 \cite{th1} by drawing on the ideas of Lisp macros, but in the typed
@@ -49,31 +49,31 @@ application: Haskell code generation at compile-time and facilitating
 the embedding of domain specific languages.
 
 As a code generator, Template Haskell empowers a user to write many,
-syntactically different, object programs all at once by means of a
-single meta program. All that is needed is a uniform, algorithmic
-description to create the different object programs. And the meta
-program then precisely implements the algorithm to compute all the
-different object programs as its result. This proves useful for
-example to avoid writing the same repetitive, boilerplate code over
-and over again. To this end, Template Haskell is used (among many
-others) in the @aeson@ library to automatically derive a data type's
-@ToJSON@ and @FromJSON@ instances for JSON serialization; or in the
-@lens@ library to mechanically create a data type's lenses.
+syntactically different, programs all at once by means of a single
+meta program. All that is needed is a uniform, algorithmic description
+to create the different result programs. And the meta program then
+precisely implements the algorithm to compute all the different result
+programs as its output. This proves useful for example to avoid
+writing the same repetitive, boilerplate code over and over again. To
+this end, Template Haskell is used (among many others) in the @aeson@
+library to automatically derive a data type's @ToJSON@ and @FromJSON@
+instances for JSON serialization; and in the @lens@ library to
+mechanically create a data type's lenses.
 
 As a framework for creating domain specific languages (EDSLs),
 Template Haskell allows a user to embed programs written in another
-programming language inside a Haskell program. This enables writing
+programming language inside of a Haskell program. This enables writing
 parts of the program in the concrete, domain specific syntax of a
 different programming language. It has the benefit to think about --
 and to express -- domain specific problems in the language best suited
-for the task. In particular, it lets a user focus on their domain
+for the task. In particular, it lets a user focus on the domain
 specific problem and removes all additional language burdens induced
 by inconvenient syntax, unsuited control constructs, etc. Programs
 from the embedded language are parsed and translated into
 corresponding (but syntactically heavier) Haskell code at compile-time
 by Template Haskell. In this sense, (e.g.,) the shakespearean template
 languages from the @shakespeare@ library use Template Haskell at their
-core. They expose succinct domain specific languages to build HTML,
+core. They expose succinct domain specific languages to write HTML,
 CSS, and Javascript code inside of a Haskell based web application.
 
 The remainder of this report is organized as follows. Section 2
@@ -88,19 +88,26 @@ independent study.
 \label{sec:th-review}
 
 In this section, I will review the Template Haskell functionality as
-introduced in \cite{th1, th2, qq} to write meta programs. In the
+introduced in \cite{th1, th2, th3, qq} to write meta programs. In the
 first set of examples I will show-case Template Haskell's potential as
 a code generator; in the second set of examples I'll highlight its
-facilities to create type-safe embedded domain specific languages
-(EDSLs).
+facilities to create embedded domain specific languages (EDSLs).
 
-To avoid confusion in the sequel, we distinguish between Template
-Haskell's compile-time meta programs and the object programs they
-generate. Meta programs are programs that compute programs as their
-data; they manipulate other programs by some algorithmic means. Object
-programs, on the other hand, are the programs that act like data to
-the meta programs, i.e., the programs being manipulated by and
-resulting as output from the meta programs.
+To avoid confusion in the sequel, we distinguish between meta programs
+and object programs. Meta programs are the Haskell programs that run
+at compile-time and which generate Template Haskell object programs as
+the result of their execution; they are the programs that devise or
+manipulate other programs by some algorithmic means. Object programs,
+on the other hand, are the Template Haskell programs manipulated and
+built by the Haskell meta programs at compile-time.
+
+%% To avoid confusion in the sequel, we distinguish between Template
+%% Haskell's compile-time meta programs and the object programs they
+%% generate. Meta programs are programs that compute programs as their
+%% data; they manipulate other programs by some algorithmic means. Object
+%% programs, on the other hand, are the programs that act like data to
+%% the meta programs, i.e., the programs being manipulated by and
+%% resulting as output from the meta programs.
 
 \subsection{Template Haskell as a Code Generator}
 
@@ -133,30 +140,32 @@ against a function |f| and \(n\) argument variables |x1|, |x2|, ...,
 |xn|; in its body, it then applies function |f| to the \(n\)-tuple
 |(x1, x2, ..., xn)| derived from the pattern matched variables. The
 names used to refer to the variables |f| and |x1| through |xn| are
-hereby generated monadically by function |newName :: String -> Q Name|
-to always generate fresh names not used anywhere else. Hence, the
-value returned by |curryN| is a monadic computation of type @Q
-Exp@. When executed, this monadic computation yields an expression
-@Exp@ representing the object program of an \(n\)-ary curry
-function. For example, |(curryN 3)| yields a monadic computation,
-whose result expression holds an object program of the |curry3|
-function of type |((a, b, c) -> d) -> a -> b -> c -> d| in abstract
-syntax.
+generated monadically by function |newName :: String -> Q Name| to
+always generate fresh names not used anywhere else. Hence, the value
+returned by |curryN| is a monadic computation of type @Q Exp@. When
+executed, this monadic computation yields an expression @Exp@
+representing the object program of an \(n\)-ary curry function. For
+example, |(curryN 3)| returns a monadic computation that yields an
+expression representing the object program of the |curry3| function of
+type |((a, b, c) -> d) -> a -> b -> c -> d| in abstract syntax.
 
-To run a meta program like |curryN| at compile time, Template
+To run a meta program like |curryN| at compile-time, Template
 Haskell's \textit{splice} operator ``|$|'' is used. When applied to a
 @Q Exp@ computation it performs this computation and converts the
 resulting object program to real Haskell code. Hence, enclosing a
 Haskell meta program by ``|$(..)|'' means to evaluate it and to splice
 in the generated Haskell code as the result of the splice. To ensure
 type safety, the meta program is type checked before being run at
-compile time. Moreover, after splicing in the resulting object program
-the entire Haskell module is typechecked again from scratch. For
-example, writing |$(curryN 3)| typechecks and then evaluates the meta
-function |(curryN 3)| at compile time and puts the resulting object
-program |\f x1 x2 x3 -> f (x1, x2, x3)| in place of the splice. After
-running all of a Haskell module's meta functions, typechecking
-restarts from scratch.
+compile-time. For example, writing |$(curryN 3)| typechecks and then
+evaluates the meta function |(curryN 3)| at compile time and puts the
+resulting object program |\f x1 x2 x3 -> f (x1, x2, x3)| in place of
+the splice.
+
+%% Moreover, after splicing in the resulting object program
+%% the entire Haskell module is typechecked again from scratch.
+
+%% After running all of a Haskell module's meta functions,
+%% typechecking restarts from scratch.
 
 To generate function declarations for the first \(n\) curry functions,
 we can devise a further meta program on top of |curryN| as follows:
@@ -178,25 +187,25 @@ functions at compile-time, namely:
 < ...
 < curry20 = \ f x1 x2 ... x20 -> f (x1, x2, ..., x20)
 
-Note that in this case, |genCurries| returns a list of function
-declarations that bind the anonymous lambda abstractions built by
-|curryN|. Furthermore, to name the function bindings, we use function
-|mkName :: String -> Name| instead of |newName :: String -> Q
+Note that in this case, |genCurries| returns a list of top-level
+function declarations that bind the anonymous lambda abstractions
+built by |curryN|. Also, to name the function bindings, we use
+function |mkName :: String -> Name| instead of |newName :: String -> Q
 Name|. The reason is that here we want to generate functions |curry1|
 to |curry20| with exactly the prescribed names, so they can be
 captured and referred to from other parts of the program.
 
-Evaluating Haskell (meta) programs at compile time and splicing in the
+Evaluating Haskell (meta) programs at compile-time and splicing in the
 generated object programs as regular Haskell code is the first central
 building block of Template Haskell. The two other core mechanisms are
 exhibited by the implementations of |curryN| and |genCurries|:
 algebraic data types and the quotation monad @Q@.
 
-Object programs created by Template Haskell are represented as regular
-algebraic data types, describing a program in the form of an abstract
-syntax tree. The Template Haskell library provides algebraic data
-types @Exp@, @Pat@, @Dec@, and @Type@ to represent Haskell's surface
-syntax of expressions, patterns, declarations, and types,
+First, object programs created by Template Haskell are represented as
+regular algebraic data types, describing a program in the form of an
+abstract syntax tree. The Template Haskell library provides algebraic
+data types @Exp@, @Pat@, @Dec@, and @Type@ to represent Haskell's
+surface syntax of expressions, patterns, declarations, and types,
 respectively. Virtually every concrete Haskell syntactic construct has
 a corresponding abstract syntax constructor in one of the four
 ADTs. Furthermore, all Haskell identifiers are represented by the
@@ -217,18 +226,18 @@ compile-time as part of evaluating the meta program. In the examples
 so far, the @Q@ monad was only needed to provide fresh identifiers
 with function |newName :: String -> Q Name| for the generated Haskell
 expressions. The other main feature that requires a monadic
-construction of object programs is \textit{program reification}, which
-allows to query compile-time information during the object program's
-construction. We will explain this feature in detail later.
+construction of object programs is \textit{reification}, which allows
+to query compile-time information during the object program's
+construction. We will explain reification in detail later.
 
-Splicing in object programs with ``|$|'' and building them from
-algebraic data types inside the quotation monad @Q@
-constitutes the core functionality of Template Haskell. However,
-constructing object programs in terms of their abstract syntax trees
-is quite verbose and leads to clumsy meta programs. Therefore the
-Template Haskell API also provides two further interfaces to build
-object programs more tersely: \textit{syntax construction functions}
-and \textit{quotation brackets}.
+Thus, Template Haskell's core functionality constitutes evaluating
+object programs with ``|$|'' and building them from algebraic data
+types inside the quotation monad @Q@. However, constructing object
+programs in terms of their abstract syntax trees is quite verbose and
+leads to clumsy meta programs. Therefore the Template Haskell API also
+provides two further interfaces to build object programs more
+conveniently: \textit{syntax construction functions} and
+\textit{quotation brackets}.
 
 Syntax construction functions directly relate to the syntax
 constructors from the algebraic data types @Exp@, @Pat@, @Dec@, and
@@ -247,10 +256,9 @@ To use the object program generated by the sub call to |curryN| in the
 larger context of the returned function declaration, we have to first
 perform |curryN| and bind its result to |cury|. The reason is that we
 have to account for |curryN|'s generation of fresh names before we can
-continue. Using syntax construction functions, however, frees us from
-explicitly performing monadic program parts when constructing a larger
-program. This allows us to hide the monadic construction of
-|genCurries|, thus making the code a little shorter:
+continue. Using syntax construction functions instead of data
+constructors, however, abstracts from the monadic construction of
+|genCurries|, thus making its code a little shorter:
 
 > genCurries :: Int -> Q [Dec]
 > genCurries n = sequence [ mkCurryDec i | i <- [1..n] ]
@@ -269,25 +277,21 @@ only difference lies in their types:
 \end{tabular}
 \end{center}
 
-While the syntax constructors work with raw Haskell expressions, the
-syntax construction functions expect monadic Haskell expressions. They
-construct an object program directly in @Q@, thus allowing the API
-consumer to not have to do all the monadic wrapping and unwrapping
-manually. For every syntax constructor, there is a corresponding
-monadic syntax construction function provided.
+While the syntax constructors work with raw TH expressions, the syntax
+construction functions expect their monadic counterparts. They
+construct a TH object program directly in @Q@, thus freeing the API
+consumer from doing the monadic wrapping and unwrapping manually. For
+every syntax constructor, there is a corresponding monadic syntax
+construction function provided.
 
-%% This gives the programmer the choice to either explicitly construct
-%% object programs inside the @Q@ monad or to do the monadic construction
-%% implicitly with syntax construction functions.
-
-On top of the syntax construction functions, quotation brackets are a
+On top of syntax construction functions, quotation brackets are a
 further shortcut for representing Haskell code. They allow to specify
 an object program using just regular Haskell syntax by enclosing it
 inside oxford brackets |[|| .. ||]|. That way, object programs can be
 specified yet much more succinctly. For example, a meta program
 building a Haskell expression for the identity function is still quite
-verbose, if expressed as abstract syntax using either ADTs or syntax
-construction functions:
+verbose, if expressed with either ADTs or syntax construction
+functions:
 
 > genId :: Q Exp
 > genId = do
@@ -310,18 +314,20 @@ concrete syntax into corresponding object program expressions inside
 the @Q@ monad. By doing so, quotation brackets represent the dual of
 the already introduced splice operator ``|$|'': Evaluating a meta
 program with ``|$|'' splices in the generated object program as real
-Haskell code; in contrast the quotation brackets |[|| .. ||]| turn
-real Haskell code into an object program. Consequently, quotation
-brackets and the splice operator cancel each other out. The equation
-|$([|| e ||]) = e| holds for all expressions \(e\) and similar
-equations hold for declarations, and types \cite{th2}.
+Haskell code; in contrast, quotation brackets |[|| .. ||]| turn real
+Haskell code into an object program. Consequently, quotation brackets
+and the splice operator cancel each other out. The equation |$([|| e
+  ||]) = e| holds for all expressions \(e\) and similar equations hold
+for declarations, and types \cite{th2}.
 
 In addition, there is support for quoting Haskell (value and type)
-identifiers as corresponding Template Haskell @Name@s. This allows to
-refer to regular Haskell identifiers from within Template Haskell
-object programs. For example, writing |`genId| yields a TH @Name@
-referring to the |genId| identifier. Similarly, |``Q| gives a @Name@
-referring to the @Q@ type identifier.
+identifiers as corresponding @Name@s inside Template Haskell. This
+allows to refer to regular Haskell identifiers from within TH object
+programs. For example, writing |'genId| yields a TH @Name@ referring
+to the |genId| identifier. Similarly, |''Q| gives a @Name@ referring
+to the @Q@ type identifier.
+
+\paragraph{Generic Maps.}
 
 As a second example that uses both syntax construction functions as
 well as quotation brackets, let's consider a meta program |mapN :: Int
@@ -354,8 +360,8 @@ standard function |map :: (a -> b) -> [a] -> [b]|; evaluating |$(mapN
 
 The implementation of |mapN| is very much in the spirit of meta
 function |curryN| from the first example. For instance, evaluating
-splice |$(mapN 3)| splices in the following map function at compile
-time:
+splice |$(mapN 3)| splices in the following map function at
+compile-time:
 
 > map3 f (x:xs) (y:ys) (z:zs) = f x y z : map3 f xs ys zs
 > map3 _ _      _      _      = []
@@ -363,21 +369,21 @@ time:
 Nonetheless, meta function |mapN| exhibits a couple of new Template
 Haskell features: First, quotation brackets and splices are used in
 several places to abbreviate the object program construction. For
-example, helper definition |apply| used to generate |map3|'s non-empty
-body |f x y z : map3 f xs ys zs| exemplifies the use of quotation
-brackets; it also highlights how splicing (``|$|'') and quotes (``|[||
-  .. ||]|'') cancel each other out. Second, identifier quotes (namely,
-|`[]|) are used to create an object program @Name@ that refers to
-Haskell's built-in list constructor |[]|. Third, the example shows how
-all three APIs for building Template Haskell object programs can be
-interleaved. The lowermost verbose API of building a raw data type
-inside the quotation monad @Q@ can be abbreviated, where possible,
-with syntax constructor functions and quotation brackets.
+example, helper definition |apply| used to generate |map3|'s body |f x
+y z : map3 f xs ys zs| shows the use of quotation brackets; it also
+highlights how splicing (``|$|'') and quotes (``|[|| .. ||]|'') cancel
+each other out. Second, identifier quotes (namely, |'[]|) are used to
+create an object program @Name@ that refers to Haskell's built-in list
+constructor |[]|. Third, the example advertises how all three APIs for
+building Template Haskell object programs can be interleaved. The
+lowermost verbose API of building a raw TH data value inside the
+quotation monad @Q@ can be abbreviated, where possible, with syntax
+constructor functions and quotation brackets.
 
-Lastly, the |mapN| example highlights how Haskell's static scoping is
+Lastly, the |mapN| example exemplifies how Haskell's static scoping is
 extended to object programs. The scoping principle for object programs
 is just as in normal Haskell: Identifiers are bound to their lexically
-enclosing binders in scope, where the object program is
+enclosing binders in scope at the point the object program is
 \textit{defined}. Quotation brackets and splices don't alter static
 scopes, even though splices may bring an object program into scope at
 a location, where a conflicting closure is present. For example,
@@ -422,12 +428,14 @@ results in the identifier |x| spliced in by |$dynamic| to be bound to
 the closest |x| in scope. Hence, its binder is |times2|'s local
 identifier |x| and \textit{not} the global |x|.
 
+\paragraph{Reification.}
+
 The final major Template Haskell feature not yet described is program
 \textit{reification}. Briefly, reification allows a meta program to
 query compile-time information about other program parts while
 constructing the object program. It allows the meta program to inspect
 other program pieces to answer questions such as: ``what's this
-variable's type?'', ``what are the type class instances of this type
+variable's type?'', ``what are the class instances of this type
 class?'', or ``which constructors does this data type have and and how
 do they look like?''. The main use case is to generate boilerplate
 code which ``auto-completes'' manually written code. A prime example
@@ -448,18 +456,16 @@ writing them all out by hand is quite cumbersome. Especially since
 writing a @Functor@ instance follows the same pattern across all of
 the above types and in fact any type @T a@.
 
-To make a type constructor @T@ an instance of typeclass @Functor@, the
-class method |fmap :: (a -> b) -> T a -> T b| needs to be
-implemented. Its definition is hereby precisely fixed by parametricity
-and the functor laws: By parametricity, all values of type @a@ must be
-replaced according to the provided function with values of type
-@b@. Furthermore, by the functor laws, all other shapes of the input
-value of type @T a@ must be preserved when transforming it to the
-output value of type @T b@.
+To make a type constructor @T@ an instance of @Functor@, one needs to
+implement method |fmap :: (a -> b) -> T a -> T b|. Its definition is
+hereby precisely determined by parametricity and the functor laws: By
+parametricity, all values of type @a@ must be replaced according to
+the provided function with values of type @b@. Furthermore, by the
+functor laws, all other shapes of the input value of type @T a@ must
+be preserved when transforming it to the output value of type @T b@.
 
-Meta function |deriveFunctor :: Name -> Q [Dec]| and its auxiliary
-definitions |genFmap|, |genFmapClause|, and |newField| below implement
-the idea of this algorithm:
+Meta function |deriveFunctor :: Name -> Q [Dec]| below implements the
+idea of this algorithm:
 
 > data Deriving = Deriving { tyCon :: Name, tyVar :: Name }
 >
@@ -480,7 +486,30 @@ the idea of this algorithm:
 >   where
 >     apply t (PlainTV name)    = appT t (varT name)
 >     apply t (KindedTV name _) = appT t (varT name)
->
+
+Given the name of a type constructor (e.g. @Result@, @List@, etc.),
+|deriveFunctor| derives the code for this type constructor's @Functor@
+instance.  For example, running the splice |$(deriveFunctor ''Tree)|
+generates the following code:
+
+> instance Functor Tree where
+>   fmap f (Leaf x)     = Leaf (f x)
+>   fmap f (Node l x r) = Node (fmap f l) (f x) (fmap f r)
+
+Most notably, meta function |deriveFunctor| shows reification in
+action. It calls function |reify :: Name -> Q Info| on the input type
+constructor's name to yield information about this data type's
+definition. Using |reify|, it thus learns whether the data type was
+defined using the @data@ or @newtype@ keyword, which constructors it
+defines and what their shapes are. Based on the learned structure,
+|deriveFunctor| is then able to generate a suitable definition of
+|fmap| and its different clauses via the auxiliaries |genFmap|,
+|genFmapClause|, and |newField|, defined below. These auxiliary
+definitions generate one |fmap| clause for each of the data type's
+constructors. And each clause then transforms its constructor by
+recursively modifying all of the constructor's fields of type @a@
+through |fmap|'s function @f@, while retaining all other shapes.
+
 > genFmap :: [Con] -> Q Dec
 > genFmap constructors
 >   = do funD `fmap (map genFmapClause constructors)
@@ -511,36 +540,13 @@ the idea of this algorithm:
 > leftmost (AppT ty1 _) = leftmost ty1
 > leftmost ty           = ty
 
-
-Given the name of a type constructor (e.g. @Result@, @List@, etc.),
-|deriveFunctor| derives the code for this type constructor's @Functor@
-instance.  For example, running the splice |$(deriveFunctor ''Tree)|
-generates the following code:
-
-> instance Functor Tree where
->   fmap f (Leaf x)     = Leaf (f x)
->   fmap f (Node l x r) = Node (fmap f l) (f x) (fmap f r)
-
-Most notably, meta function |deriveFunctor| shows reification in
-action. It calls function |reify :: Name -> Q Info| on the input type
-constructor's name to yield information about this data type's
-definition. Using |reify|, it thus learns whether the data type was
-defined using the @data@ or @newtype@ keyword, which constructors it
-defines and what their shapes are. Based on the learned structure,
-|deriveFunctor| is then able to generate a suitable definition of
-|fmap| and its different clauses via helper functions |genFmap|,
-|genFmapClause|, and |newField|, respectively. The idea is to generate
-one |fmap| clause for each of the data type's constructors. And each
-clause then transforms its constructor by recursively modifying all of
-the constructor's fields of type @a@ through |fmap|'s function @f@,
-while retaining all other shapes.
-
-In an analogous manner, a function |deriveFoldable :: Name -> Q [Dec]|
-can be written to derive a data type's @Foldable@ instance. All that
-is needed is to provide a definition for function |foldMap :: Monoid m
-=> (a -> m) -> T a -> m|. Again, |foldMap|'s definition follows
-directly from a data type's bare definition, which can be observed by
-means of reification\footnote{In fact, the example at
+In an analogous manner to |deriveFunctor|, a function |deriveFoldable
+:: Name -> Q [Dec]| can be devised to derive a data type's @Foldable@
+instance. All that is needed is to provide a definition for function
+|foldMap :: Monoid m => (a -> m) -> T a -> m|. Again, |foldMap|'s
+definition follows directly from a data type's bare definition, which
+can be observed by means of reification\footnote{In fact, the example
+  at
   https://www.github.com/bollmann/th-samples/DeriveFunctorFoldable.hs
   implements a (slightly more involved) meta program to derive both
   @Functor@ and @Foldable@ instances in a single framework.}. This
@@ -558,7 +564,7 @@ To see Template Haskell's potential for building an EDSL, consider the
 problem of pattern matching text with regular expressions. Suppose, as
 part of a Haskell program we need to devise many different regular
 expressions and use them to pattern match text fragments. Regular
-expressions are easily defined by an algebraic datatype capturing
+expressions are easily defined by an algebraic data type capturing
 their structure, as well as an evaluator checking whether a regular
 expression matches some input string\footnote{This example draws on
   Penn's CIS 552 \textit{Advanced Programming} course, specifically
@@ -1087,10 +1093,10 @@ cases, the succinct pattern synonym names can also be used as
 patterns in an expression context.
 
 Pattern synonyms prove useful (e.g.,) when composing data types from
-smaller building blocks as suggested by Conor
-McBride\footnote{https://www.reddit.com/r/haskell/comments/1kmods/patternsynonyms\_ghc\_trac/cbqk5t2}.
-For example, due to Conor McBride, a binary tree @Tree a@ can be built
-from fixpoints, sums, and products of values as follows:
+smaller building blocks.  The following example, due to Conor
+McBride\footnote{https://www.reddit.com/r/haskell/comments/1kmods/patternsynonyms\_ghc\_trac/cbqk5t2},
+shows how to build a binary tree @Tree a@ from fixpoints, sums, and
+products of atomic nodes:
 
 > newtype K a       x = K a
 > newtype I         x = I x
