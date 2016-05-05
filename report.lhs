@@ -614,7 +614,7 @@ remainder of |s|:
 > deriv Void _          = Void
 > deriv (Var _) _       = Void
 
-The @RegExp@ datatype and the |match| function solve the initially
+The @RegExp@ data type and the |match| function solve the initially
 posed problem of providing regular expressions in Haskell. However,
 specifying regular expressions in abstract syntax is extremely
 tedious. For example, consider defining a regular expression for
@@ -628,40 +628,44 @@ functions like
 \item |compile  :: String -> RegExp|, or
 \item |compile' :: String -> Either CompileError RegExp|
 \end{itemize}
-do not resolve the problem of working with regular expressions in
+do not remedy the problem of working with regular expressions in
 concrete syntax. Due to ``compiling'' regular expressions at run time,
 they don't provide any compile-time type-safety guarantees that the
 input raw expression is wellformed; thus they lead to either run time
-exceptions for illformed regular expressions (|compile|) or imply a
-tedious usability for compiled regexes (|compile'|).
+exceptions for illformed regular expressions (e.g., |compile|) or
+induce a tedious handling for compiled regexes (e.g., |compile'|).
 
 To preserve type safety and yet to be able to use regular expressions
 conveniently, we want to embed the concrete regular expression syntax
 into the Haskell host language. This can be done via Template
-Haskell's quasi quotes and the @QuasiQuotes@ extension. It allows
-defining \textit{quasi quotes} for regular expressions, denoted
-|[regex|| .. ||]|, where anything inside the quasi quote is considered
-part of an embedded regular expression language. Using quasi quotes,
-we can then specify the regex for email addresses from above naturally
-as follows:
+Haskell's quasi quotes and furthermore enabling the @QuasiQuotes@
+extension. This allows defining \textit{quasi quotes} for regular
+expressions, denoted |[regex|| .. ||]|, where anything inside the
+quasi quote is considered part of an embedded regular expression
+language. Using quasi quotes, we can then specify the regex for email
+addresses from above naturally as follows:
 
-> alphaNum, validDotComMail :: RegExp
-> alphaNum        = [regex|[a-z]|[0-9]|]
-> validDotComMail = [regex|${alphaNum}*@${alphaNum}*.com|]
+> validDotComMail = [regex|([a-z]|[0-9])*@([a-z]|[0-9])*.com|]
 
-Note how we can even compose regular expressions easily from smaller
-building blocks. Writing |${alphaNum}| interpolates the regex referred
-to by |alphaNum| into the larger regex |validDotComMail|. In essence,
-this means that we can define our own notion of splicing values from
-the Haskell meta language into the embedded object language of regular
-expressions. We can go further and even allow to run Haskell code when
-interpolating with @${..}@. For example, refining our wellformedness
-check for ``\texttt{.com}'' mail addresses, we might want to ensure at
-least one character to occur on either side of the ``@@'' symbol:
+We can even compose regular expressions easily from smaller building
+blocks:
 
-> chars', validDotComMail' :: RegExp
-> chars'           = [regex|[a-z]|[A-Z]|[0-9]|[-_.]|]
-> validDotComMail' = [regex|${plus chars'}@${plus chars'}.com|]
+> alphaNum, validDotComMail' :: RegExp
+> alphaNum         = [regex|[a-z]|[0-9]|]
+> validDotComMail' = [regex|${alphaNum}*@${alphaNum}*.com|]
+
+Writing |${alphaNum}| interpolates the regex referred to by |alphaNum|
+into the larger regex |validDotComMail'|. In essence, this means that
+we can define our own notion of splicing values from the Haskell meta
+language into the embedded object language of regular expressions. We
+can go further and even allow to run Haskell code when interpolating
+with @${..}@. For example, refining our wellformedness check for
+``\texttt{.com}'' mail addresses, we might want to ensure at least one
+character to occur on either side of the ``@@'' symbol:
+
+> chars, validDotComMail'' :: RegExp
+> chars             = [regex|[a-z]|[A-Z]|[0-9]|[-_.]|]
+> validDotComMail'' = [regex|${plus chars}@${plus chars}.com|]
 >
 > plus :: RegExp -> RegExp
 > plus r = Seq r (Star r)
@@ -669,18 +673,19 @@ least one character to occur on either side of the ``@@'' symbol:
 Here, |plus| corresponds to the usual regex combinator that requires a
 given regex to occur at least once. Note how |plus| is defined as a
 regular Haskell function and then used \textit{inside} of the embedded
-regex language to build the regular expression for |validDotComMail'|.
+regex language to build the regular expression for
+|validDotComMail''|.
 
 Intuitively, a quasi quote like |[regex|| .. ||]| converts an embedded
-language's concrete syntax to Haskell code at compile time. It is
+language's concrete syntax to Haskell code at compile-time. It is
 defined by a \textit{quasi quoter}, which is a parser for the embedded
-language. The quasi quoter's task is to parse the embedded language's
-syntax into a corresponding Template Haskell expression and then to
-splice this expression as real Haskell code in place of the quasi
-quote. The conversion of embedded language code to corresponding
-Haskell code hereby happens before typechecking the Haskell
-module. Hence, trying to splice in malformed embedded language
-fragments will raise a Haskell type error at compile time.
+language. Its task is to parse the embedded language's syntax into a
+corresponding Template Haskell expression and then to splice this
+expression as real Haskell code in place of the quasi quote. The
+conversion of embedded language code to corresponding Haskell code
+hereby happens before typechecking the Haskell module. Hence, trying
+to splice in malformed embedded language fragments will raise a
+Haskell type error at compile-time.
 
 The quasi quoter @regex@ for our embedded language of regular
 expressions can be defined as follows:
@@ -764,8 +769,8 @@ words in the string |vars| as referring to identifiers from the
 Haskell host language, which we apply in a left associative manner to
 each other. Doing this enables interpolation of Haskell identifiers or
 even simple forms of Haskell expressions into our EDSL of regular
-expressions as shown by the regexes |validDotComMail| and
-|validDotComMail'| above.
+expressions as shown by the regexes |validDotComMail'|, and
+|validDotComMail''| above.
 
 > instance Lift a => Lift (Set a) where
 >   lift set = appE (varE `Set.fromList) (lift (Set.toList set))
@@ -793,8 +798,10 @@ Haskell expression @Exp@ and splices in the result as a wellformed
 quotes can be used to define a type-safe, domain specific language for
 regular expressions.
 
-In much the same manner, Template Haskell and quasi quotes are used in
-Michael Snoyman's \texttt{shakespeare}
+\paragraph{Shakespearean Templates.}
+
+In much the same manner as in the last example, Template Haskell and
+quasi quotes are used in Michael Snoyman's \texttt{shakespeare}
 library~\cite{shakespeare,shakespeare-lib}. It defines embedded
 templating languages for working with the internet's web languages
 from within a Haskell web application. In particular, the
@@ -862,14 +869,15 @@ Hamlet language.
 
 In addition to this standard interpolation, Hamlet can also
 interpolate links by writing |@{..}|. These links are specified as
-values of the |Page| datatype inside the template and the |mkUrls|
-render function translates them to real URLs later. Hamlet's
-URL interpolation has commonly be phrased as creating ``type-safe
+values of the |Page| data type inside the template and the |mkUrls|
+render function translates them to real URLs later. Hamlet's URL
+interpolation has commonly be phrased as creating ``type-safe
 URLs''. One reason is that, just like with normal variable
 interpolation, all interpolated links have to exist and be type
-correct at compile-time. Hence, as soon as a link's constructor shape
-is changed, the compiler statically forces us to update all references
-to this link as well. Furthermore, there is only one distinct place in
+correct at compile-time; in this case, links must be values of the
+@Page@ data type. Hence, as soon as a link's constructor shape is
+changed, the compiler statically forces us to update all references to
+this link as well. Furthermore, there is only one distinct place in
 the code to maintain or update a link's raw URL, thus minimizing the
 risk of dead URLs.
 
@@ -921,14 +929,13 @@ as described in the previous section. It provides the main module
 \texttt{Language.Haskell.TH.\{Syntax, Lib, Ppr, Quote\}}, respectively.
 
 Module @Language.Haskell.TH.Syntax@ defines the algebraic data types,
-the quotation monad @Q@, and the @Lift@ typeclass for
-representing Haskell programs as data; module
-@Language.Haskell.TH.Lib@ defines the corresponding syntax
-construction functions. Furthermore, module @Language.Haskell.TH.Ppr@
-provides a pretty printer for displaying Template Haskell object
-programs in concrete syntax. Finally, @Language.Haskell.TH.Quote@
-defines the quasi quoter datatype for embedding domain specific
-languages.
+the quotation monad @Q@, and the @Lift@ type class for representing
+Haskell programs as data; module @Language.Haskell.TH.Lib@ defines the
+corresponding syntax construction functions. Furthermore, module
+@Language.Haskell.TH.Ppr@ provides a pretty printer for displaying
+Template Haskell object programs in concrete syntax. Finally,
+@Language.Haskell.TH.Quote@ defines the quasi quoter data type for
+embedding domain specific languages.
 
 Inside GHC, Template Haskell is implemented by the
 \texttt{TemplateHaskell} language extension. This extension's main
@@ -953,23 +960,23 @@ into abstract Haskell syntax. Next, GHC's renamer processes @M@'s
 abstract syntax, resolving the scopes of the module's identifiers and
 connecting them to their binding sites. As part of renaming, feature
 (a) is implemented: the evaluation of meta programs. All top-level
-splices occurring in the Haskell module @M@ are renamed and then
-executed with their results spliced in place of them. In particular,
-when the renamer comes across a splice |$(mp)|, it triggers a
-subcompilation process of just meta program |mp|. This subcompilation
-first typechecks |mp| to ensure that it has type @Q Exp@ (or @Q
-[Dec]@, etc.) and thus that it yields a valid Template Haskell object
-program. If typechecking succeeds, |mp| is then desugared to an
-equivalent, but simpler core expression, and afterwards compiled,
-linked, and run. The result is a monadic value of type @Q Exp@ (or @Q
-[Dec]@, or the like), which is performed via Template Haskell's |runQ|
-function to obtain the generated Template Haskell object program. This
-object program is finally converted into real Haskell (abstract)
-syntax and spliced in place of the original meta program |$(mp)|. This
-concludes the evaluation of meta program |mp|. After splicing in the
-meta program's result, the renamer continues its renaming process on
-the spliced in result program as if there had never been any splice
-|$(mp)|.
+splices occurring in the Haskell module @M@ are executed and their
+results spliced in place of them. In particular, when the renamer
+comes across a splice |$(mp)|, it renames the splice's body and then
+triggers a subcompilation process for just meta program |mp|. This
+subcompilation first typechecks |mp| to ensure that it is of type @Q
+Exp@ (or @Q [Dec]@, etc.) and thus that it yields a valid Template
+Haskell object program. If typechecking succeeds, |mp| is then
+desugared to an equivalent, but simpler core expression, and
+afterwards compiled, linked, and run. The result is a monadic value of
+type @Q Exp@ (or @Q [Dec]@, or the like), which is performed via
+Template Haskell's |runQ| function to obtain the generated Template
+Haskell object program. This object program is finally converted into
+real Haskell (abstract) syntax and spliced in place of the original
+meta program |$(mp)|. This concludes the evaluation of meta program
+splice |$(mp)|. After splicing in the meta program's result, the
+renamer continues its renaming process on the spliced in result
+program as if there had never been any splice |$(mp)|.
 
 Running Template Haskell splices in the renamer and thus before
 typechecking the enclosing Haskell module gives rise to the so-called
@@ -984,10 +991,10 @@ run. And typechecking a splice's code coming from the very module
 currently being renamed would require evaluation of splices to be run
 after typechecking (as in fact was done in the original Template
 Haskell implementation \cite{th1}). However, postponing the evaluation
-of splices to after the typechecking phase bears other problems, for
-example how to rename new identifiers brought into scope by a splice's
-execution. Hence, until today the stage restriction has persisted in
-the Glasgow Haskell Compiler.
+of splices to after the typechecking phase bears other problems, most
+notably how to rename new identifiers brought into scope through a
+splice's execution. Hence, until today the stage restriction has
+persisted in the Glasgow Haskell Compiler.
 
 After renaming module @M@, typechecking happens. It ensures that the
 composition of @M@'s terms is allowed by its types. With regard to
@@ -996,7 +1003,7 @@ programs are checked in the same manner as regular Haskell code. Their
 only distinctive characteristic is to construct a Template Haskell
 object program and thus to be of type @Q Exp@, (or @Q [Dec]@, or the
 like). While this ensures that a Haskell meta program in fact builds
-some sort of a TH expression (or declarations, etc.), it doesn't
+some sort of a TH expression (or TH declarations, etc.), it doesn't
 enforce the type correctness of the generated object program. This is
 because the object program construction in Template Haskell is
 untyped, where we don't know whether a built TH expression of type,
@@ -1037,22 +1044,23 @@ After GHC's typechecking pass, desugaring of module @M@'s Haskell code
 takes place. The desugaring consists of multiple steps in which the
 elaborate Haskell syntax is simplified into GHC's intermediate
 language \texttt{Core} (i.e., System F\(\omega\) with
-Coercions~\cite{systemfc}). With regard to Template Haskell, splices
-have already been eliminated by running them in the renaming stage.
-Furthermore Template Haskell object program constructions of data
-values (of e.g. type @Exp@, @[Dec]@, or similar) inside monad @Q@ are
-desugared just in the same way as is normal do notation. Accordingly,
-only feature (b), the desugaring of quotation brackets deserves
-special attention: its quoted Haskell expression is rewritten as a
-\texttt{Core} expression that, when run, produces a Template Haskell
-code fragment equivalent to the quoted Haskell expression. To this
-end, splices like |$(e)| inside a quotation bracket are replaced by
-their splice bodies |e|. Thus, running the desugared \texttt{Core}
-expression of a quotation bracket also evaluates its nested splices to
-yield the overall TH object program. Overall, the desugaring achieves
-representing Haskell code as corresponding Template Haskell object
-programs by translating the former into the latter at the level of
-Haskell's intermediate \texttt{Core} language.
+Coercions~\cite{systemfc}). With regard to Template Haskell, top-level
+splices have already been eliminated by running them in the renaming
+stage.  Furthermore Template Haskell object program constructions of
+data values (of e.g. type @Exp@, @[Dec]@, or similar) inside monad @Q@
+are desugared just in the same way as is normal do
+notation. Accordingly, only feature (b), the desugaring of quotation
+brackets deserves special attention: its quoted Haskell expression is
+translated into a \texttt{Core} expression that, when run, produces a
+Template Haskell code fragment equivalent to the quoted Haskell
+expression. To this end, nested splices like |$(mp)| inside a
+quotation bracket are replaced by their splice bodies |mp|. Thus,
+running the desugared \texttt{Core} expression of a quotation bracket
+also evaluates its nested splices to yield the overall TH object
+program. Overall, the desugaring achieves representing Haskell code as
+corresponding Template Haskell object programs by translating the
+former into the latter at the level of Haskell's intermediate
+\texttt{Core} language.
 
 The desugared Haskell module @M@ is finally fed into one of several
 possible code generators to generate machine code for the architecture
@@ -1066,18 +1074,18 @@ holding some meta program |mp|. The evaluation is triggered as part of
 the renaming pass by module \texttt{rename/RnSplice.hs}. It renames a
 top-level splice's body and then calls into module
 \texttt{typecheck/TcSplice.hs} for further processing. Module
-\texttt{typecheck/TcSplice.hs} first typechecks |mp| to be a valid
-meta program and then desugars it to a simpler core
+\texttt{typecheck/TcSplice.hs} first typechecks |mp| to be a correct
+meta program and if so, then desugars, it to a simpler core
 expression. Desugaring hereby involves using module
 \texttt{deSugar/DsMeta.hs} for simplifying Template Haskell's
 quotation brackets. The desugared meta program is then evaluated by
-\texttt{typecheck/TcSplice.hs} and the resulting monadic TH object
-program is performed to yield a data value representing the computed
-TH object program. This TH object program is finally spliced in as the
-result of splice |$(mp)| as real Haskell code. The conversion from
-Template Haskell syntax to real Haskell syntax is done by module
-\texttt{hsSyn/Convert.hs}. All these steps conclude the evaluation of
-meta program |mp| as part of the renaming pass.
+\texttt{typecheck/TcSplice.hs} and the resulting monadic value is
+performed to yield the computed TH object program. This TH object
+program is finally spliced in as the result of splice |$(mp)| as real
+Haskell code. The conversion from Template Haskell syntax to real
+Haskell syntax is done by module \texttt{hsSyn/Convert.hs}. All these
+steps conclude the evaluation of meta program |mp| as part of the
+renaming pass.
 
 \section{Adding Pattern Synonyms Support to Template Haskell}
 \label{sec:patsyns}
@@ -1095,8 +1103,8 @@ patterns in an expression context.
 Pattern synonyms prove useful (e.g.,) when composing data types from
 smaller building blocks.  The following example, due to Conor
 McBride\footnote{https://www.reddit.com/r/haskell/comments/1kmods/patternsynonyms\_ghc\_trac/cbqk5t2},
-shows how to build a binary tree @Tree a@ from fixpoints, sums, and
-products of atomic nodes:
+shows how to build a binary tree from fixpoints, sums, and products of
+simple data types:
 
 > newtype K a       x = K a
 > newtype I         x = I x
@@ -1107,9 +1115,9 @@ products of atomic nodes:
 >
 > newtype Tree a = Fix (K a :+: (I :*: I))
 
-This composite construction of @Tree a@ nicely reuses existing
-datatypes and their sub structures. However, without pattern synonyms,
-both constructing and pattern matching against values of type @Tree a@
+This composite construction of @Tree a@ nicely reuses existing data
+types and their sub structures. However, without pattern synonyms,
+both the construction and pattern matching values of type @Tree a@
 becomes verbose and cumbersome. For example, making tree an instance
 of @Functor@ is horrendous:
 
@@ -1121,15 +1129,15 @@ of @Functor@ is horrendous:
 <       = In (Sum (Right (Prod (I (go f l), I (go f r)))))
 
 Similarly, constructing even simple trees is very tedious. To
-alleviate this clumsyness, pattern synonyms can be used to define
+alleviate this clumsiness, pattern synonyms can be used to define
 @Leaf@ and @Node@ patterns:
 
 > pattern Leaf x   = In (Sum (Left (K x)))
 > pattern Node l r = In (Sum (Right (Prod (I l, I r))))
 
-These patterns once and for all fix @Tree a@'s generic internal type
+These patterns once and for all fix a @Tree a@'s generic internal type
 structure and give a shortcut name to pattern match (or construct) a
-tree's node or leaf. Using pattern synonyms, defining a @Tree@s
+tree's node or leaf. Using pattern synonyms, defining a @Tree@'s
 @Functor@ instance again becomes easy to read:
 
 > instance Functor Tree where
@@ -1193,13 +1201,14 @@ selectors to work on the underlying pattern. The different pattern
 synonym forms are explained in detail in GHC's users
 manual~\cite{ghc-users-guide}.
 
-To add pattern synonyms to Template Haskell, I had to extend the TH
-library as well as the GHC internal modules \texttt{hsSyn/Convert.hs},
-\texttt{deSugar/DsMeta.hs}, and \texttt{typecheck/TcSplice.hs}. In
-Template Haskell's public library, I added syntax constructors as well
-as corresponding syntax construction functions to represent pattern
-synonyms inside TH object programs. Moreover, I changed the
-reification datatype to also take pattern synonyms into account.
+To add pattern synonyms to Template Haskell's object language, I had
+to extend both the TH library as well as the GHC internal modules
+\texttt{hsSyn/Convert.hs}, \texttt{deSugar/DsMeta.hs}, and
+\texttt{typecheck/TcSplice.hs}. To the Template Haskell library, I
+added syntax constructors as well as corresponding syntax construction
+functions to also represent pattern synonyms inside TH object
+programs. Moreover, I changed the reification data type to also take
+pattern synonyms into account.
 
 Inside GHC, I modified modules \texttt{deSugar/DsMeta.hs} and
 \texttt{hsSyn/Convert.hs} to also convert between Haskell's pattern
@@ -1229,13 +1238,15 @@ general, a pattern synonym's type signature is of the following form:
 <           => t1 -> t2 -> .. -> tn -> t
 < pattern P x1 x2 .. xn = <some-pattern>
 
-That is, a pattern synonym's type comes with two forall quantifiers
-and two constraint contexts. The first @forall@ quantifier quantifies
-over all universially bound type variables and its context @CReq@
-denotes these type variables' required constraints. The second
-@forall@ quantifier refers to the pattern synonym's existentially
-bound type variables and its context @CProv@ refers to those
-variable's provided constraints.
+That is, in general a pattern synonym's type comes equipped with two
+forall quantifiers and two constraint contexts. The first @forall@
+quantifier quantifies over all universially bound type variables and
+its context @CReq@ denotes these type variables' required
+constraints. The second @forall@ quantifier refers to the pattern
+synonym's existentially bound type variables and its context @CProv@
+refers to those variable's provided constraints. Finally, @t1@ through
+@tn@ denote the pattern synonym's argument types and @t@ is the type
+of its right hand side.
 
 Due to their unusual type shapes, I couldn't as easily reuse already
 existing machinery for the reification of Haskell types (in
@@ -1245,7 +1256,7 @@ had originally thought. Instead I had to special-case the reification
 of pattern synonym type signatures as well as their conversion from
 Template Haskell syntax to real Haskell syntax.
 
-After resolving this problem, a second major issue concerned the
+After resolving this problem, the second major issue concerned the
 implementation of record pattern synonyms. Internally in GHC, record
 pattern synonyms are modeled with both names for the public record
 selectors and (hidden) names for the pattern synonym's internal (right
@@ -1266,8 +1277,8 @@ conversion between Haskell's abstract syntax and Template Haskell
 syntax hadn't been needed before, so I had to come up with a design
 and the machinery implementing it. In the end, the solution turned out
 to be quite small code-wise, but accomplishing it required me to
-understand the TH implementation and its various interactions much
-better than I had before.
+understand the TH implementation and its various interactions with
+other GHC components much better than I had before.
 
 What made the above problem particularly difficult to solve was an
 unrelated GHC bug. In particular, once I had added support for record
@@ -1284,11 +1295,11 @@ name resolution of the spliced in pattern synonyms: The newly added
 GHC extension \texttt{DuplicateRecordFields} hadn't been made
 compatible with Template Haskell. In particular, one invariant of
 Template Haskell says that spliced in object programs are already
-renamer resolved. However, the \texttt{DuplicateRecordFields}
+renamer-resolved. However, the \texttt{DuplicateRecordFields}
 extension did not respect this invariant and sought to rename spliced
 in selectors anyways, thus dissolving the link between selector
 binders and their usage sites. As it turned out, not only record
-pattern synonym selectors were affected, but in fact any datatype's
+pattern synonym selectors were affected, but in fact any data type's
 record selectors. Hence, fixing the issue not only solved my task of
 supporting pattern synonyms in Template Haskell, but also resolved a
 regression in GHC 8.0~\cite{patsyns-bugfix}.
@@ -1338,18 +1349,21 @@ think about a third of the total development time was spent discussing
 design choices (or strange errors) on Phabricator.
 
 Concluding, I think I've learned a whole lot of new things about
-Haskell during this independent study! Besides studying Haskell's meta
-programming using Template Haskell, this independent study exposed me
-to big Haskell systems, most notably parts of the Glasgow Haskell
-Compiler and the \texttt{template-haskell} library. This exposure has
-let me \textit{read} significant chunks of Haskell code, permitting me
-to see common Haskell paradigms (like Applicatives, Monads, Phantom
-Types, etc.) elegantly solve the practical problems at hand. Moreover,
-this independent study let me explore various GHC extensions (such as
+Haskell during this independent study. Besides studying Haskell's meta
+programming facilities in the framework of Template Haskell, this
+independent study exposed me to big Haskell systems, most notably
+parts of the Glasgow Haskell Compiler and the
+\texttt{template-haskell} library. This exposure has let me write
+quite some code while preparing the pattern synonyms patch. Equally
+important, it has made me \textit{read} and understand significant
+chunks of Haskell code, permitting me to see common Haskell paradigms
+(like Applicatives, Monads, Phantom Types, etc.) elegantly solve the
+practical problems at hand. In this vain, the independent study also
+let me explore various GHC extensions (such as
 \texttt{TemplateHaskell}, \texttt{PatternSynonyms},
 \texttt{ViewPatterns}, \texttt{TypeFamilies}, \texttt{RankNTypes}) for
-the first time. To this end, I think it has enhanced my understanding
-of Haskell greatly!
+the first time. To this end, I think it has enhanced my knowledge
+about Haskell greatly!
 
 \bibliographystyle{alpha} \bibliography{refs}
 
