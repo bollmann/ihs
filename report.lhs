@@ -1353,11 +1353,11 @@ Haskell during this independent study. Besides studying Haskell's meta
 programming facilities in the framework of Template Haskell, this
 independent study exposed me to big Haskell systems, most notably
 parts of the Glasgow Haskell Compiler and the
-\texttt{template-haskell} library. This exposure has let me write
-quite some code while preparing the pattern synonyms patch. Equally
-important, it has made me \textit{read} and understand significant
+\texttt{template-haskell} library. This exposure has let me write code
+for GHC while preparing the pattern synonyms patch. Equally important,
+it has made me \textit{read} and \textit{understand} significant
 chunks of Haskell code, permitting me to see common Haskell paradigms
-(like Applicatives, Monads, Phantom Types, etc.) elegantly solve the
+(like Monads, Type Families, Phantom Types, etc.) elegantly solve the
 practical problems at hand. In this vain, the independent study also
 let me explore various GHC extensions (such as
 \texttt{TemplateHaskell}, \texttt{PatternSynonyms},
