@@ -690,12 +690,9 @@ Haskell type error at compile-time.
 The quasi quoter @regex@ for our embedded language of regular
 expressions can be defined as follows:
 
-\todo{explain TExp, unTypeQ, [e|| .. ||] or get rid of typed
-  expression quotes and splices!}
-
 > regex :: QuasiQuoter
 > regex = QuasiQuoter {
->     quoteExp  = unTypeQ . compile
+>     quoteExp  = compile
 >   , quotePat  = notHandled "patterns"
 >   , quoteType = notHandled "types"
 >   , quoteDec  = notHandled "declarations"
@@ -703,11 +700,11 @@ expressions can be defined as follows:
 >   where notHandled things = error $
 >           things ++ " are not handled by the regex quasiquoter."
 >
-> compile :: String -> Q (TExp RegExp)
+> compile :: String -> Q Exp
 > compile s =
 >   case P.parse regexParser "" s of
 >     Left  err    -> fail (show err)
->     Right regexp -> [e|| regexp ||]
+>     Right regexp -> [e| regexp |]
 
 That is, formally a @QuasiQuoter@ consists of four parsers,
 
@@ -726,9 +723,18 @@ given as a string into a corresponding Template Haskell expression.
 Compilation by the |compile| function proceeds in two stages: First,
 we parse the input string regex into a corresponding @RegExp@
 value. Second, we encode this @RegExp@ value as a Haskell expression
-in Template Haskell's @Exp@ datatype. It is the second step that
-allows us to interpolate variables (or even code) from the Haskell
-host language into the EDSL for regular expressions.
+in Template Haskell's @Q Exp@ type. It is the second step that allows
+us to interpolate variables (or even code) from the Haskell host
+language into the EDSL for regular expressions.
+
+%% Note that in this case we encode the @RegExp@ value as a
+%% \textit{typed} Template Haskell expression, i.e. @Q (TExp RegExp)@. In
+%% contrast to Template Haskell's untyped expressions of type @Q Exp@
+%% this ensures that the encoded value indeed is some regex of type
+%% @RegExp@. The typed encoding of @regexp@ as a Template Haskell
+%% expression is triggered by the typed quotation brackets |[e|||| regexp
+%%   ||||]|; after compilation, this expression is ``untyped'' again to a
+%% value of type @Q Exp@ by function |unTypeQ :: Q (TExp a) -> Q Exp|.
 
 Parsing a raw regular expression into a corresponding @RegExp@ value
 is a routine task using (e.g.) the \texttt{parsec} library:
@@ -753,14 +759,12 @@ is a routine task using (e.g.) the \texttt{parsec} library:
 >                  <|> atom
 >   specials   = "[]()*|"
 
-To represent regular expressions of type @RegExp@ as Haskell
+To represent regular expressions of type @RegExp@ as Template Haskell
 expressions of type @Q Exp@, Template Haskell's @Lift@ typeclass is
 used. Its method @lift :: Lift a => a -> Q Exp@ lifts values from the
-Haskell meta language (i.e., a @RegExp@ value) into Template Haskell's
-object language (i.e., a value of the @Q Exp@ datatype). The |lift|
-function is used implicitly by the quote |[e|||| regexp ||||]| in
-function |compile| to represent a @RegExp@ value as a Template Haskell
-expression.
+Haskell meta language (e.g., a @RegExp@ value) into Template Haskell's
+expression language (i.e., a @Q Exp@ value). The |lift| function is
+implicitly invoked by quote |[e|| regexp ||]| in function |compile|.
 
 Most of the lifting is a direct encoding of the syntactic structure of
 the @RegExp@ value; the only interesting case is when lifting the
@@ -793,7 +797,7 @@ expressions into Template Haskell expressions inside of the |compile|
 function and define the @regex@ quasiquoter. Whenever we write a quasi
 quote like |[regex|| .. ||]| in a Haskell expression context,
 |regex|'s parser |quoteExp| converts the regex EDSL into a Template
-Haskell expression @Exp@ and splices in the result as a wellformed
+Haskell expression @Q Exp@ and splices in the result as a wellformed
 @RegExp@ value. This example shows how Template Haskell and quasi
 quotes can be used to define a type-safe, domain specific language for
 regular expressions.
@@ -1208,7 +1212,8 @@ to extend both the TH library as well as the GHC internal modules
 added syntax constructors as well as corresponding syntax construction
 functions to also represent pattern synonyms inside TH object
 programs. Moreover, I changed the reification data type to also take
-pattern synonyms into account.
+pattern synonyms into account and adjusted the pretty printer to
+include pattern synonyms.
 
 Inside GHC, I modified modules \texttt{deSugar/DsMeta.hs} and
 \texttt{hsSyn/Convert.hs} to also convert between Haskell's pattern
@@ -1217,18 +1222,18 @@ I extended \texttt{deSugar/DsMeta.hs} to desugar Haskell's pattern
 synonyms into a core expression denoting a pattern synonym in Template
 Haskell syntax. Similarly, I adjusted \texttt{hsSyn/Convert.hs} to
 convert the Template Haskell representation of pattern synonyms into
-the corresponding Haskell abstract syntax. Finally, I modified
-\texttt{typecheck/TcSplice.hs} to also provide reification of pattern
-synonyms, namely to return a pattern synonym's type signature upon
-request.
+the corresponding Haskell abstract syntax. Furthermore, I modified
+module \texttt{typecheck/TcSplice.hs} to also provide reification of
+pattern synonyms, namely to return a pattern synonym's type signature
+upon request.
 
 My initial implementation draft was quite straightforward and took
-only around two weeks to complete. This was mainly because I could
+only around three weeks to complete. This was mainly because I could
 reuse most of GHC's already existing Template Haskell architecture to
 also desugar, convert, and reify pattern synonyms. However, the devil
 was then in the detail. In particular, after completing my first
 implementation draft, I faced two major problems, which took me around
-6 more weeks (on and off) to fully resolve.
+five more weeks (on and off) to fully resolve.
 
 The first problem concerned the peculiar types of pattern synonyms. In
 general, a pattern synonym's type signature is of the following form:
@@ -1314,8 +1319,8 @@ synonyms''~\cite{rdragon-patch}.
 
 In the course of the last four months, I've explored meta programming
 in GHC's Template Haskell extension. To learn about Template Haskell,
-I first dived into the underlying theory by
-reading~\cite{th1,th2,th3,qq,aosa,yesod,shakespeare}. Second, I
+I first dived into the underlying
+theory~\cite{th1,th2,th3,qq,aosa,yesod,shakespeare}. Second, I
 fostered my understanding of meta programming by developing a couple
 of toy programs show-casing the features of Template Haskell. Many
 examples have been described in Section~\ref{sec:th-review}, a few
@@ -1331,22 +1336,24 @@ tickets \texttt{\#9022}, \texttt{\#11145}, \texttt{\#10707}, and
 \texttt{\#9693}. The two former tickets turned out to be already
 fixed, so that I could close them easily after adding corresponding
 regression tests; investigating the latter two tickets wasn't as
-successful unfortunately, as I got overwhelmed by GHC's code base
-while trying to understand them. Nonetheless looking into these first
+successful unfortunately, as I got overwhelmed by GHC's code-base
+while trying to trace them down. Nonetheless looking into these first
 tickets helped me familiarize myself with GHC's development process,
 and with submitting patches for review on Phabricator.
 
-Next, I started tackling my bigger task: to also support GHC's
-\texttt{PatternSynonym} extension inside of Template Haskell. This
-task and its challenges are described in detail in
-Section~\ref{sec:patsyns} and took around two months to
-complete. During this time I communicated extensively with Richard
-Eisenberg, Matthew Pickering, and Ben Gamari, who reviewed and
-commented on my patches. My gratitude goes particularly to Richard
-Eisenberg, who has relentlessly given feedback on the former drafts of
-my patch and whose comments have improved the end quality by a lot. I
-think about a third of the total development time was spent discussing
-design choices (or strange errors) on Phabricator.
+Next, I started tackling the more involved ticket \texttt{\#8761}: to
+also support GHC's \texttt{PatternSynonym} extension inside of
+Template Haskell. This task and its challenges are described in detail
+in Section~\ref{sec:patsyns} and also let to the resolution of the
+regression in ticket \texttt{\#11809}.
+
+While preparing the pattern synonyms patch, I communicated extensively
+with Richard Eisenberg, Matthew Pickering, and Ben Gamari, who
+reviewed and commented on my initial drafts. My gratitude goes
+particularly to Richard Eisenberg, who has relentlessly given feedback
+on the patch and whose comments have improved the end quality by a
+lot! In fact, about a third of the development time was spent
+discussing design choices (or strange errors) on Phabricator.
 
 Concluding, I think I've learned a whole lot of new things about
 Haskell during this independent study. Besides studying Haskell's meta
