@@ -536,12 +536,12 @@ while retaining all other shapes.
 >
 > newField :: Name -> (Name, StrictType) -> Q Exp
 > newField f (x, (_, fieldType))
->   = do Just (Deriving typeCon typeVar) <- getQ
+>   = do Just (Deriving typeCon tyVar) <- getQ
 >        case fieldType of
->          VarT typeVar' | typeVar' == typeVar ->
+>          VarT tyVar' | tyVar' == tyVar ->
 >            [| $(varE f) $(varE x) |]
->          ty `AppT` VarT typeVar' |
->            leftmost ty == (ConT typeCon) && typeVar' == typeVar ->
+>          ty `AppT` VarT tyVar' |
+>            leftmost ty == (ConT typeCon) && tyVar' == tyVar ->
 >              [| fmap $(varE f) $(varE x) |]
 >          _ -> [| $(varE x) |]
 >
@@ -563,9 +563,9 @@ function |genFmapClause|. The latter recursively maps the provided
 function |f :: a -> b| over all of a constructor's fields of type @a@,
 while leaving all other fields untouched. Each field is hereby
 modified through |f| or left unchanged by auxiliary |newField| based
-on the field's type: if a field's type is @a@ (which is stored
-retrieved as |tyVar| inside |newField|), then |f| needs to be applied
-to it; otherwise it needs to remain unchanged.
+on the field's type: if a field's type is @a@ (which is stored in the
+retrieved |tyVar| inside function |newField|), then |f| needs to be
+applied to it; otherwise it needs to remain unchanged.
 
 In an analogous manner to |deriveFunctor|, a function |deriveFoldable
 :: Name -> Q [Dec]| can be devised to derive a data type's @Foldable@
@@ -1015,8 +1015,8 @@ stage restriction: a top-level splice |$(mp)| may only use imported
 and thus already fully typechecked code. Template Haskell's stage
 restriction is a harsh limitation and requires a user to separate the
 definitions of meta programs from their use-sites in splices into
-different modules; a requirement that often stands in contrast to how
-a programmer would like to arrange splices and their usage
+different modules; a requirement that often stands in contrast to
+where a programmer would like to place splices and their usage
 sites. However, overcoming the stage restriction is difficult to
 implement. After all, the code inside a splice must be successfully
 typechecked before it can be run. And typechecking a splice's code
