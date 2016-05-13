@@ -147,7 +147,15 @@ executed, this monadic computation yields an expression @Exp@
 representing the object program of an \(n\)-ary curry function. For
 example, |(curryN 3)| returns a monadic computation that yields an
 expression representing the object program of the |curry3| function of
-type |((a, b, c) -> d) -> a -> b -> c -> d| in abstract syntax.
+type |((a, b, c) -> d) -> a -> b -> c -> d| in abstract syntax. Note
+that meta function |curryN| cannot be written in normal Haskell per se
+as the type for a generated \(n\)-ary curry function depends on
+\(n\). Thus, the definition of |curryN| requires \textit{dependent
+  types} to be expressed in Haskell, a feature not (yet)
+present. \footnote{Note though, that there are ingenious alternatives
+  to ``faking'' dependent types in Haskell; see
+  (e.g.,)~\cite{faking-dep-tys} for a solution to simulate functions
+  like |curryN| without dependent types.}
 
 To run a meta program like |curryN| at compile-time, Template
 Haskell's \textit{splice} operator ``|$|'' is used. When applied to a
@@ -336,7 +344,8 @@ compile-time. Invoking |$(mapN 1)| should generate the well-known
 standard function |map :: (a -> b) -> [a] -> [b]|; evaluating |$(mapN
 2)| should splice in a binary map function of type |(a -> b -> c) ->
 [a] -> [b] -> [c]|, and so on\footnote{Note that \(n\)-ary maps are
-  better written using Applicative Functors and @ZipList@s. For
+  better written using Applicative Functors and @ZipList@s, as this
+  allows to define them first-class from within regular Haskell. For
   understanding Template Haskell as a code generator, this example is
   still useful though.}.
 
@@ -496,26 +505,26 @@ generates the following code:
 >   fmap f (Leaf x)     = Leaf (f x)
 >   fmap f (Node l x r) = Node (fmap f l) (f x) (fmap f r)
 
-Most notably, meta function |deriveFunctor| shows reification in
-action. It calls function |reify :: Name -> Q Info| on the input type
-constructor's name to yield information about this data type's
-definition. Using |reify|, it thus learns whether the data type was
-defined using the @data@ or @newtype@ keyword, which constructors it
-defines and what their shapes are. Based on the learned structure,
-|deriveFunctor| is then able to generate a suitable definition of
-|fmap| and its different clauses via the auxiliaries |genFmap|,
-|genFmapClause|, and |newField|, defined below. These auxiliary
-definitions generate one |fmap| clause for each of the data type's
-constructors. And each clause then transforms its constructor by
-recursively modifying all of the constructor's fields of type @a@
-through |fmap|'s function @f@, while retaining all other shapes.
+Meta function |deriveFunctor| shows reification in action. It calls
+function |reify :: Name -> Q Info| on the input type constructor's
+name to yield information about this data type's definition. Using
+|reify|, it thus learns whether the data type was defined using the
+@data@ or @newtype@ keyword, which constructors it defines and what
+their shapes are. Based on the learned structure, |deriveFunctor| is
+then able to generate a suitable definition of |fmap| and its
+different clauses via the auxiliaries |genFmap|, |genFmapClause|, and
+|newField|, defined below. These auxiliary definitions generate one
+|fmap| clause for each of the data type's constructors. And each
+clause then transforms its constructor by recursively modifying all of
+the constructor's fields of type @a@ through |fmap|'s function @f@,
+while retaining all other shapes.
 
 > genFmap :: [Con] -> Q Dec
-> genFmap constructors
->   = do funD `fmap (map genFmapClause constructors)
+> genFmap cs
+>   = do funD `fmap (map genFmapClause cs)
 >
 > genFmapClause :: Con -> Q Clause
-> genFmapClause (NormalC name fieldTypes)
+> genFmapClause c@(NormalC name fieldTypes)
 >   = do f          <- newName "f"
 >        fieldNames <- replicateM (length fieldTypes) (newName "x")
 >
@@ -539,6 +548,24 @@ through |fmap|'s function @f@, while retaining all other shapes.
 > leftmost :: Type -> Type
 > leftmost (AppT ty1 _) = leftmost ty1
 > leftmost ty           = ty
+
+In more detail, |deriveFunctor| works as follows. First, via |reify|
+it observes the input data type's name |tyConName|, its declared type
+variables |tyVars|, and its exposed constructors |cs|. It then
+determines the data type's right-most type variable |tyVar| and stores
+it together with the data type's type constructor name |tyConName| in
+the |Q| monad's user state. This state information is retrieved later
+again from inside auxiliary definition |newField|. Next,
+|deriveFunctor| derives a |Functor|'s |fmap| definition using
+auxiliary |genFmap|. For each of the input data type's value
+constructors |cs|, |genFmap| generates an |fmap| clause using helper
+function |genFmapClause|. The latter recursively maps the provided
+function |f :: a -> b| over all of a constructor's fields of type @a@,
+while leaving all other fields untouched. Each field is hereby
+modified through |f| or left unchanged by auxiliary |newField| based
+on the field's type: if a field's type is @a@ (which is stored
+retrieved as |tyVar| inside |newField|), then |f| needs to be applied
+to it; otherwise it needs to remain unchanged.
 
 In an analogous manner to |deriveFunctor|, a function |deriveFoldable
 :: Name -> Q [Dec]| can be devised to derive a data type's @Foldable@
@@ -985,20 +1012,22 @@ program as if there had never been any splice |$(mp)|.
 Running Template Haskell splices in the renamer and thus before
 typechecking the enclosing Haskell module gives rise to the so-called
 stage restriction: a top-level splice |$(mp)| may only use imported
-and thus already fully typechecked code. The stage restriction is
-presumably Template Haskell's most annoying limitation as it requires
-a user to separate the definitions of meta programs from their
-use-sites in splices into different modules. However, overcoming the
-stage restriction is difficult to implement. After all, the code
-inside a splice must be successfully typechecked before it can be
-run. And typechecking a splice's code coming from the very module
-currently being renamed would require evaluation of splices to be run
-after typechecking (as in fact was done in the original Template
-Haskell implementation \cite{th1}). However, postponing the evaluation
-of splices to after the typechecking phase bears other problems, most
-notably how to rename new identifiers brought into scope through a
-splice's execution. Hence, until today the stage restriction has
-persisted in the Glasgow Haskell Compiler.
+and thus already fully typechecked code. Template Haskell's stage
+restriction is a harsh limitation and requires a user to separate the
+definitions of meta programs from their use-sites in splices into
+different modules; a requirement that often stands in contrast to how
+a programmer would like to arrange splices and their usage
+sites. However, overcoming the stage restriction is difficult to
+implement. After all, the code inside a splice must be successfully
+typechecked before it can be run. And typechecking a splice's code
+coming from the very module currently being renamed would require
+evaluation of splices to be run after typechecking (as in fact was
+done in the original Template Haskell implementation
+\cite{th1}). However, postponing the evaluation of splices to after
+the typechecking phase bears other problems, most notably how to
+rename new identifiers brought into scope through a splice's
+execution. Hence, until today the stage restriction has persisted in
+the Glasgow Haskell Compiler.
 
 After renaming module @M@, typechecking happens. It ensures that the
 composition of @M@'s terms is allowed by its types. With regard to
@@ -1251,15 +1280,41 @@ constraints. The second @forall@ quantifier refers to the pattern
 synonym's existentially bound type variables and its context @CProv@
 refers to those variable's provided constraints. Finally, @t1@ through
 @tn@ denote the pattern synonym's argument types and @t@ is the type
-of its right hand side.
+of its right hand side. Either one (or both) of the required or
+provided constraint contexts may be empty. The type signature of a
+pattern synonym |P| with just provided constraints is written with an
+explicit, yet empty preceding constraint context as either one of
+
+< P :: forall a1 .. an. () => forall b1 .. bm. CProv => t1 -> .. -> tn -> t
+< P :: () => forall b1 .. bm. CProv => t1 -> .. -> tn -> t
+
+depending on whether there are any universals or not. In
+contrast, the type signature of a pattern |P| with just required
+constraints is denoted as either one of
+
+< P :: forall a1 .. an. CReq => forall b1 .. bm. t1 -> .. -> tn -> t
+< P :: forall a1 .. an. CReq => t1 -> .. -> tn -> t
+
+depending on the presence or absence of existentially quantified type
+variables. This convention determines which of the two constraint
+contexts or forall quantifiers have been specified for a pattern
+synonym mentioning only one context or forall quantifier.
 
 Due to their unusual type shapes, I couldn't as easily reuse already
-existing machinery for the reification of Haskell types (in
-\texttt{typecheck/TcSplice.hs}) and for converting Template Haskell
-types to their Haskell analogs (in \texttt{hsSyn/Convert.hs}), as I
-had originally thought. Instead I had to special-case the reification
-of pattern synonym type signatures as well as their conversion from
-Template Haskell syntax to real Haskell syntax.
+existing machinery for translating between Template Haskell types and
+their Haskell analogs (in \texttt{deSugar/DsMeta.hs} and
+\texttt{hsSyn/Convert.hs}) and for the reification of Haskell types
+(in \texttt{typecheck/TcSplice.hs}), as I had originally thought. In
+particular, I had to take extra care when translating pattern synonym
+type signatures between Template Haskell syntax and real Haskell
+syntax: initial required constraint contexts had to be preserved
+despite being empty, while empty provided constraint needed to be
+forgotten. This gave rise to two different treatments of ``empty''
+constraint contexts (which in the haskell AST are denoted simply as
+empty lists), which had to be decided from the context. To this end, I
+had to special-case the pattern synonym type signature conversions
+between Template Haskell syntax and real Haskell syntax as well as the
+reification of pattern synonym type signatures.
 
 After resolving this problem, the second major issue concerned the
 implementation of record pattern synonyms. Internally in GHC, record
